@@ -10,11 +10,13 @@ export const renderStatus = (repoRoot: string, entries: ReadonlyArray<StackStatu
   [
     `jjacks status`,
     `repo: ${repoRoot}`,
-    ...entries.map(({ entry, pullRequest, remoteBranchExists, needsBookmarkPush }) => {
-      const parent = entry.parentBookmarkName ?? "<trunk>";
-      const remote = !remoteBranchExists ? "not pushed" : needsBookmarkPush ? "needs push" : "pushed";
-      return `- ${entry.name} -> ${entry.branchName} | parent: ${parent} | remote: ${remote} | pr: ${formatPr(pullRequest)}`;
-    })
+    ...(entries.length === 0
+      ? ["no active bookmark stack", "next: jjacks create <bookmark-name>"]
+      : entries.map(({ entry, pullRequest, remoteBranchExists, needsBookmarkPush }) => {
+          const parent = entry.parentBookmarkName ?? "<trunk>";
+          const remote = !remoteBranchExists ? "not pushed" : needsBookmarkPush ? "needs push" : "pushed";
+          return `- ${entry.name} -> ${entry.branchName} | parent: ${parent} | remote: ${remote} | pr: ${formatPr(pullRequest)}`;
+        }))
   ].join("\n");
 
 export const renderSyncPlan = (plan: SyncPlan): string =>
@@ -29,7 +31,9 @@ export const renderSyncPlan = (plan: SyncPlan): string =>
   ].join("\n");
 
 export const renderSyncPreview = (plan: SyncPlan, stackComment: string): string =>
-  [renderSyncPlan(plan), "", "stack comment preview", stackComment].join("\n");
+  plan.stack.length === 0
+    ? ["jjacks sync plan", "no active bookmark stack", "next: jjacks create <bookmark-name>"].join("\n")
+    : [renderSyncPlan(plan), "", "stack comment preview", stackComment].join("\n");
 
 export const renderExecuteSummary = (result: ExecuteSyncResult): string => {
   const pushedSummary =

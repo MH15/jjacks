@@ -35,6 +35,7 @@ const doctor = Command.make("doctor", {}, () =>
         "advance-bookmarks.enabled: true",
         `repo root: ${status.repoRoot}`,
         `current stack entries: ${status.entries.length}`,
+        ...(status.entries.length === 0 ? ["no active bookmark stack", "next: jjacks create <bookmark-name>"] : []),
         ...status.entries.map(({ entry, pullRequest, remoteBranchExists, needsBookmarkPush }) =>
           `${entry.name}: branch ${entry.branchName}, ${
             !remoteBranchExists ? "not pushed" : needsBookmarkPush ? "needs push" : "pushed"
