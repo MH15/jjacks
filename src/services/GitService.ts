@@ -38,8 +38,12 @@ const make = {
         .split("\n")
         .map((line) => line.trim())
         .find((line) => line.startsWith("@origin"));
-      const remoteBranchExists = originLine !== undefined;
-      const needsBookmarkPush = originLine === undefined || originLine.includes("(ahead by") || originLine.includes("(behind by");
+      const remoteBranchExists = originLine !== undefined && !originLine.includes("(not created yet)");
+      const needsBookmarkPush =
+        originLine === undefined ||
+        originLine.includes("(not created yet)") ||
+        originLine.includes("(ahead by") ||
+        originLine.includes("(behind by");
 
       return {
         remoteBranchExists,

@@ -1,7 +1,8 @@
 import { Context, Effect, Layer } from "effect";
 
 import type { ExecuteSyncResult, StackStatusEntry, SyncPlan } from "../domain";
-import { buildSyncPlanFromStatus } from "../stack";
+import { CliError } from "../errors";
+import { buildSyncPlanFromStatus, renderStackComment, stackCommentMarker } from "../stack";
 import { GitService } from "./GitService";
 import { GitHubService } from "./GitHubService";
 import { JjService } from "./JjService";
@@ -74,12 +75,22 @@ const make = {
   }),
 
   executeSync: Effect.gen(function* () {
+    const jj = yield* JjService;
     const git = yield* GitService;
     const gh = yield* GitHubService;
     const repo = yield* RepoService;
     const repoInfo = yield* repo.getRepoInfo;
     const entries = yield* getStatusEntries;
-    const toPush = entries.filter((entry) => entry.needsBookmarkPush).map((entry) => entry.entry.name);
+    const blankDescriptions = entries
+      .map((entry) => entry.entry)
+      .filter((entry) => entry.description.trim().length === 0);
+
+    yield* Effect.forEach(blankDescriptions, (entry) => jj.ensureBookmarkDescription(entry.name, entry.name), {
+      discard: true
+    });
+
+    const describedEntries = blankDescriptions.length === 0 ? entries : yield* getStatusEntries;
+    const toPush = describedEntries.filter((entry) => entry.needsBookmarkPush).map((entry) => entry.entry.name);
 
     yield* Effect.forEach(toPush, (bookmarkName) => git.pushBookmark(bookmarkName), {
       discard: true
@@ -89,10 +100,20 @@ const make = {
     const refreshedPlan = buildSyncPlanFromStatus(refreshedEntries, repoInfo.defaultBranch ?? "main");
     const createdPullRequestBookmarks: Array<string> = [];
     const updatedPullRequestNumbers: Array<number> = [];
+    const updatedCommentPullRequestNumbers: Array<number> = [];
 
     yield* Effect.forEach(refreshedPlan.stack, (planEntry) =>
       Effect.gen(function* () {
         if (planEntry.pullRequest === null) {
+          if (!planEntry.remoteBranchExists) {
+            return yield* Effect.fail(
+              new CliError(
+                `Bookmark ${planEntry.entry.name} is still not published on origin after push. ` +
+                  `Run "jj bookmark list ${planEntry.entry.name} --all-remotes" to inspect its remote state.`
+              )
+            );
+          }
+
           yield* gh.createPullRequest({
             headBranch: planEntry.entry.branchName,
             baseBranch: planEntry.intendedBaseBranch,
@@ -134,11 +155,42 @@ const make = {
 
     const finalEntries = yield* getStatusEntries;
     const plan = buildSyncPlanFromStatus(finalEntries, repoInfo.defaultBranch ?? "main");
+    const stackComment = renderStackComment(finalEntries);
+
+    yield* Effect.forEach(finalEntries, (entry) =>
+      Effect.gen(function* () {
+        const pullRequest = entry.pullRequest;
+        if (pullRequest === null) {
+          return;
+        }
+
+        const comments = yield* gh.listIssueComments(pullRequest.number);
+        const existing = comments.find((comment) => comment.body.includes(stackCommentMarker));
+
+        if (existing === undefined) {
+          yield* gh.createIssueComment({
+            pullRequestNumber: pullRequest.number,
+            body: stackComment
+          });
+        } else if (existing.body !== stackComment) {
+          yield* gh.updateIssueComment({
+            commentId: existing.id,
+            body: stackComment
+          });
+        } else {
+          return;
+        }
+
+        updatedCommentPullRequestNumbers.push(pullRequest.number);
+      }),
+      { discard: true }
+    );
 
     return {
       pushedBookmarks: toPush,
       createdPullRequestBookmarks,
       updatedPullRequestNumbers,
+      updatedCommentPullRequestNumbers,
       plan,
       statusEntries: finalEntries
     } satisfies ExecuteSyncResult;

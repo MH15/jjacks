@@ -9,6 +9,10 @@ export class JjService extends Context.Tag("JjService")<
   {
     readonly ensureAdvanceBookmarksEnabled: Effect.Effect<void, CliError, ProcessService>;
     readonly getCurrentStack: Effect.Effect<ReadonlyArray<StackEntry>, CliError, ProcessService>;
+    readonly ensureBookmarkDescription: (
+      bookmarkName: string,
+      description: string
+    ) => Effect.Effect<void, CliError, ProcessService>;
   }
 >() {}
 
@@ -16,6 +20,17 @@ const advanceBookmarksError = () =>
   new CliError(
     'jjacks requires `advance-bookmarks.enabled = true`.\n\nRun:\n  jj config set --user advance-bookmarks.enabled true'
   );
+
+const ensureAdvanceBookmarksEnabled = Effect.gen(function* () {
+  const process = yield* ProcessService;
+  const result = yield* process.run("jj", ["config", "get", "advance-bookmarks.enabled"], {
+    allowNonZeroExit: true
+  });
+
+  if (result.exitCode !== 0 || result.stdout.trim() !== "true") {
+    return yield* Effect.fail(advanceBookmarksError());
+  }
+});
 
 const deriveBranchName = (bookmarkName: string): string =>
   bookmarkName.replace(/[^A-Za-z0-9/_-]+/g, "-");
@@ -25,8 +40,8 @@ const parseTemplateLine = (line: string): BookmarkNode | null => {
     return null;
   }
 
-  const [name, changeId, commitId, parentBookmarkName] = line.split("\t");
-  if (name === undefined || changeId === undefined || commitId === undefined) {
+  const [name, changeId, commitId, description, parentBookmarkName] = line.split("\t");
+  if (name === undefined || changeId === undefined || commitId === undefined || description === undefined) {
     return null;
   }
 
@@ -40,27 +55,26 @@ const parseTemplateLine = (line: string): BookmarkNode | null => {
     name,
     changeId,
     commitId,
+    description,
     parentBookmarkName: resolvedParentBookmarkName
   };
 };
 
 const make = {
-  ensureAdvanceBookmarksEnabled: Effect.gen(function* () {
-    const process = yield* ProcessService;
-    const result = yield* process.run("jj", ["config", "get", "advance-bookmarks.enabled"], {
-      allowNonZeroExit: true
-    });
+  ensureAdvanceBookmarksEnabled,
 
-    if (result.exitCode !== 0 || result.stdout.trim() !== "true") {
-      return yield* Effect.fail(advanceBookmarksError());
-    }
-  }),
+  ensureBookmarkDescription: (bookmarkName: string, description: string) =>
+    Effect.gen(function* () {
+      const process = yield* ProcessService;
+      yield* process.run("jj", ["describe", "-m", description, bookmarkName]);
+    }),
 
   getCurrentStack: Effect.gen(function* () {
     const process = yield* ProcessService;
-    yield* make.ensureAdvanceBookmarksEnabled;
+    yield* ensureAdvanceBookmarksEnabled;
     const template =
       `bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ change_id.short() ++ "\t" ++ commit_id.short() ++ "\t" ++ ` +
+      `description.first_line() ++ "\t" ++ ` +
       `parents.map(|p| p.bookmarks().map(|b| b.name()).join(",")).join("|") ++ "\n"`;
 
     const current = yield* process.run(

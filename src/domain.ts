@@ -2,6 +2,7 @@ export interface BookmarkNode {
   readonly name: string;
   readonly changeId: string;
   readonly commitId: string;
+  readonly description: string;
   readonly parentBookmarkName: string | undefined;
 }
 
@@ -16,6 +17,12 @@ export interface PullRequestSummary {
   readonly headRefName: string;
   readonly baseRefName: string;
   readonly isDraft: boolean;
+}
+
+export interface PullRequestComment {
+  readonly id: number;
+  readonly body: string;
+  readonly url: string;
 }
 
 export interface StackStatusEntry {
@@ -48,6 +55,7 @@ export interface ExecuteSyncResult {
   readonly pushedBookmarks: ReadonlyArray<string>;
   readonly createdPullRequestBookmarks: ReadonlyArray<string>;
   readonly updatedPullRequestNumbers: ReadonlyArray<number>;
+  readonly updatedCommentPullRequestNumbers: ReadonlyArray<number>;
   readonly plan: SyncPlan;
   readonly statusEntries: ReadonlyArray<StackStatusEntry>;
 }

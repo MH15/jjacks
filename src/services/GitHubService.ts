@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 
-import type { PullRequestSummary } from "../domain";
+import type { PullRequestComment, PullRequestSummary } from "../domain";
 import { CliError } from "../errors";
 import { ProcessService } from "./ProcessService";
 
@@ -19,6 +19,17 @@ export class GitHubService extends Context.Tag("GitHubService")<
       readonly number: number;
       readonly baseBranch?: string;
       readonly title?: string;
+    }) => Effect.Effect<void, CliError, ProcessService>;
+    readonly listIssueComments: (
+      pullRequestNumber: number
+    ) => Effect.Effect<ReadonlyArray<PullRequestComment>, CliError, ProcessService>;
+    readonly createIssueComment: (options: {
+      readonly pullRequestNumber: number;
+      readonly body: string;
+    }) => Effect.Effect<void, CliError, ProcessService>;
+    readonly updateIssueComment: (options: {
+      readonly commentId: number;
+      readonly body: string;
     }) => Effect.Effect<void, CliError, ProcessService>;
   }
 >() {}
@@ -108,6 +119,55 @@ const make = {
 
       const process = yield* ProcessService;
       yield* process.run("gh", args);
+    }),
+
+  listIssueComments: (pullRequestNumber: number) =>
+    Effect.gen(function* () {
+      const process = yield* ProcessService;
+      const result = yield* process.run("gh", [
+        "api",
+        `/repos/{owner}/{repo}/issues/${pullRequestNumber}/comments`
+      ]);
+
+      return JSON.parse(result.stdout) as Array<PullRequestComment>;
+    }),
+
+  createIssueComment: ({
+    pullRequestNumber,
+    body
+  }: {
+    readonly pullRequestNumber: number;
+    readonly body: string;
+  }) =>
+    Effect.gen(function* () {
+      const process = yield* ProcessService;
+      yield* process.run("gh", [
+        "api",
+        "--method",
+        "POST",
+        `/repos/{owner}/{repo}/issues/${pullRequestNumber}/comments`,
+        "-f",
+        `body=${body}`
+      ]);
+    }),
+
+  updateIssueComment: ({
+    commentId,
+    body
+  }: {
+    readonly commentId: number;
+    readonly body: string;
+  }) =>
+    Effect.gen(function* () {
+      const process = yield* ProcessService;
+      yield* process.run("gh", [
+        "api",
+        "--method",
+        "PATCH",
+        `/repos/{owner}/{repo}/issues/comments/${commentId}`,
+        "-f",
+        `body=${body}`
+      ]);
     })
 };
 
