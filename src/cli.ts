@@ -5,7 +5,7 @@ import { Console, Effect, Layer } from "effect";
 import { CliError } from "./errors";
 import { renderStackComment } from "./stack";
 import { resolveSyncMode } from "./sync-mode";
-import { renderDoctor, renderStatus, renderSyncPreview } from "./text";
+import { renderDoctor, renderExecuteSummary, renderStatus, renderSyncPreview } from "./text";
 import { GitServiceLive } from "./services/GitService";
 import { GitHubServiceLive } from "./services/GitHubService";
 import { JjService, JjServiceLive } from "./services/JjService";
@@ -69,26 +69,7 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
     if (mode === "execute") {
       const result = yield* stackService.executeSync;
       const preview = renderSyncPreview(result.plan, renderStackComment(result.statusEntries));
-      const pushedSummary =
-        result.pushedBookmarks.length === 0
-          ? "no bookmark pushes were needed"
-          : `pushed bookmarks:\n${result.pushedBookmarks.map((name) => `- ${name}`).join("\n")}`;
-      const createdSummary =
-        result.createdPullRequestBookmarks.length === 0
-          ? "no pull requests were created"
-          : `created pull requests for bookmarks:\n${result.createdPullRequestBookmarks.map((name) => `- ${name}`).join("\n")}`;
-      const updatedSummary =
-        result.updatedPullRequestNumbers.length === 0
-          ? "no pull requests were updated"
-          : `updated pull requests:\n${result.updatedPullRequestNumbers.map((number) => `- #${number}`).join("\n")}`;
-      const commentSummary =
-        result.updatedCommentPullRequestNumbers.length === 0
-          ? "no stack comments were updated"
-          : `updated stack comments on pull requests:\n${result.updatedCommentPullRequestNumbers
-              .map((number) => `- #${number}`)
-              .join("\n")}`;
-
-      yield* Console.log(`${preview}\n\n${pushedSummary}\n${createdSummary}\n${updatedSummary}\n${commentSummary}`);
+      yield* Console.log(`${preview}\n\n${renderExecuteSummary(result)}`);
       return;
     }
 
