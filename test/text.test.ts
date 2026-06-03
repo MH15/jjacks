@@ -28,6 +28,7 @@ const executeResult: ExecuteSyncResult = {
   createdPullRequestBookmarks: ["feat/base"],
   updatedPullRequestNumbers: [],
   updatedCommentPullRequestNumbers: [12],
+  warnings: [],
   plan,
   statusEntries: []
 };
@@ -50,5 +51,15 @@ describe("renderExecuteSummary", () => {
     expect(output).toContain("created pull requests:");
     expect(output).toContain("no PR metadata updates were needed");
     expect(output).toContain("updated stack comments:");
+  });
+
+  it("includes warnings when non-fatal sync steps fail", () => {
+    const output = renderExecuteSummary({
+      ...executeResult,
+      warnings: ["failed to sync stack comment for PR #12: API rate limit exceeded"]
+    });
+
+    expect(output).toContain("warnings:");
+    expect(output).toContain("failed to sync stack comment for PR #12");
   });
 });

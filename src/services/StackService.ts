@@ -101,6 +101,7 @@ const make = {
     const createdPullRequestBookmarks: Array<string> = [];
     const updatedPullRequestNumbers: Array<number> = [];
     const updatedCommentPullRequestNumbers: Array<number> = [];
+    const warnings: Array<string> = [];
 
     yield* Effect.forEach(refreshedPlan.stack, (planEntry) =>
       Effect.gen(function* () {
@@ -164,24 +165,33 @@ const make = {
           return;
         }
 
-        const comments = yield* gh.listIssueComments(pullRequest.number);
-        const existing = comments.find((comment) => comment.body.includes(stackCommentMarker));
+        const outcome = yield* Effect.either(
+          Effect.gen(function* () {
+            const comments = yield* gh.listIssueComments(pullRequest.number);
+            const existing = comments.find((comment) => comment.body.includes(stackCommentMarker));
 
-        if (existing === undefined) {
-          yield* gh.createIssueComment({
-            pullRequestNumber: pullRequest.number,
-            body: stackComment
-          });
-        } else if (existing.body !== stackComment) {
-          yield* gh.updateIssueComment({
-            commentId: existing.id,
-            body: stackComment
-          });
-        } else {
-          return;
+            if (existing === undefined) {
+              yield* gh.createIssueComment({
+                pullRequestNumber: pullRequest.number,
+                body: stackComment
+              });
+            } else if (existing.body !== stackComment) {
+              yield* gh.updateIssueComment({
+                commentId: existing.id,
+                body: stackComment
+              });
+            } else {
+              return;
+            }
+
+            updatedCommentPullRequestNumbers.push(pullRequest.number);
+          })
+        );
+
+        if (outcome._tag === "Left") {
+          const error = outcome.left;
+          warnings.push(`failed to sync stack comment for PR #${pullRequest.number}: ${error.message}`);
         }
-
-        updatedCommentPullRequestNumbers.push(pullRequest.number);
       }),
       { discard: true }
     );
@@ -191,6 +201,7 @@ const make = {
       createdPullRequestBookmarks,
       updatedPullRequestNumbers,
       updatedCommentPullRequestNumbers,
+      warnings,
       plan,
       statusEntries: finalEntries
     } satisfies ExecuteSyncResult;

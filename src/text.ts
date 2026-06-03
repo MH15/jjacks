@@ -51,5 +51,8 @@ export const renderExecuteSummary = (result: ExecuteSyncResult): string => {
       ? "no stack comments were updated"
       : `updated stack comments:\n${result.updatedCommentPullRequestNumbers.map((number) => `- #${number}`).join("\n")}`;
 
-  return [pushedSummary, createdSummary, updatedSummary, commentSummary].join("\n");
+  const warningSummary =
+    result.warnings.length === 0 ? undefined : `warnings:\n${result.warnings.map((warning) => `- ${warning}`).join("\n")}`;
+
+  return [pushedSummary, createdSummary, updatedSummary, commentSummary, warningSummary].filter(Boolean).join("\n");
 };
