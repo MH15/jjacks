@@ -1,15 +1,21 @@
 import { Context, Effect, Layer } from "effect";
 
-import type { BookmarkNode, StackEntry } from "../domain.js";
-import { CliError } from "../errors.js";
-import { ProcessService } from "./ProcessService.js";
+import type { BookmarkNode, StackEntry } from "../domain";
+import { CliError } from "../errors";
+import { ProcessService } from "./ProcessService";
 
 export class JjService extends Context.Tag("JjService")<
   JjService,
   {
+    readonly ensureAdvanceBookmarksEnabled: Effect.Effect<void, CliError, ProcessService>;
     readonly getCurrentStack: Effect.Effect<ReadonlyArray<StackEntry>, CliError, ProcessService>;
   }
 >() {}
+
+const advanceBookmarksError = () =>
+  new CliError(
+    'jjacks requires `advance-bookmarks.enabled = true`.\n\nRun:\n  jj config set --user advance-bookmarks.enabled true'
+  );
 
 const deriveBranchName = (bookmarkName: string): string =>
   bookmarkName.replace(/[^A-Za-z0-9/_-]+/g, "-");
@@ -39,8 +45,20 @@ const parseTemplateLine = (line: string): BookmarkNode | null => {
 };
 
 const make = {
+  ensureAdvanceBookmarksEnabled: Effect.gen(function* () {
+    const process = yield* ProcessService;
+    const result = yield* process.run("jj", ["config", "get", "advance-bookmarks.enabled"], {
+      allowNonZeroExit: true
+    });
+
+    if (result.exitCode !== 0 || result.stdout.trim() !== "true") {
+      return yield* Effect.fail(advanceBookmarksError());
+    }
+  }),
+
   getCurrentStack: Effect.gen(function* () {
     const process = yield* ProcessService;
+    yield* make.ensureAdvanceBookmarksEnabled;
     const template =
       `bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ change_id.short() ++ "\t" ++ commit_id.short() ++ "\t" ++ ` +
       `parents.map(|p| p.bookmarks().map(|b| b.name()).join(",")).join("|") ++ "\n"`;

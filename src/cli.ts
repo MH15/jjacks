@@ -2,16 +2,16 @@ import { Command, Options } from "@effect/cli";
 import { NodeContext, NodeRuntime } from "@effect/platform-node";
 import { Console, Effect, Layer } from "effect";
 
-import { CliError } from "./errors.js";
-import { renderStackComment } from "./stack.js";
-import { resolveSyncMode } from "./sync-mode.js";
-import { renderDoctor, renderStatus, renderSyncPreview } from "./text.js";
-import { GitServiceLive } from "./services/GitService.js";
-import { GitHubServiceLive } from "./services/GitHubService.js";
-import { JjServiceLive } from "./services/JjService.js";
-import { ProcessServiceLive } from "./services/ProcessService.js";
-import { RepoServiceLive } from "./services/RepoService.js";
-import { StackService, StackServiceLive } from "./services/StackService.js";
+import { CliError } from "./errors";
+import { renderStackComment } from "./stack";
+import { resolveSyncMode } from "./sync-mode";
+import { renderDoctor, renderStatus, renderSyncPreview } from "./text";
+import { GitServiceLive } from "./services/GitService";
+import { GitHubServiceLive } from "./services/GitHubService";
+import { JjService, JjServiceLive } from "./services/JjService";
+import { ProcessServiceLive } from "./services/ProcessService";
+import { RepoServiceLive } from "./services/RepoService";
+import { StackService, StackServiceLive } from "./services/StackService";
 
 const sharedLayer = Layer.mergeAll(
   ProcessServiceLive,
@@ -24,15 +24,20 @@ const sharedLayer = Layer.mergeAll(
 
 const doctor = Command.make("doctor", {}, () =>
   Effect.gen(function* () {
+    const jjService = yield* JjService;
     const stackService = yield* StackService;
+    yield* jjService.ensureAdvanceBookmarksEnabled;
     const status = yield* stackService.getStatus;
 
     yield* Console.log(
       renderDoctor([
+        "advance-bookmarks.enabled: true",
         `repo root: ${status.repoRoot}`,
         `current stack entries: ${status.entries.length}`,
-        ...status.entries.map(({ entry, pullRequest, remoteBranchExists }) =>
-          `${entry.name}: branch ${entry.branchName}, ${remoteBranchExists ? "pushed" : "not pushed"}${
+        ...status.entries.map(({ entry, pullRequest, remoteBranchExists, needsBookmarkPush }) =>
+          `${entry.name}: branch ${entry.branchName}, ${
+            !remoteBranchExists ? "not pushed" : needsBookmarkPush ? "needs push" : "pushed"
+          }${
             pullRequest === null ? ", no PR yet" : `, PR #${pullRequest.number}`
           }`
         )

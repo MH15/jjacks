@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { SyncPlan } from "../src/domain.js";
-import { renderSyncPreview } from "../src/text.js";
+import type { SyncPlan } from "../src/domain";
+import { renderSyncPreview } from "../src/text";
 
 const plan: SyncPlan = {
   stack: [
