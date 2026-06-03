@@ -10,18 +10,23 @@ export const renderStatus = (repoRoot: string, entries: ReadonlyArray<StackStatu
   [
     `jjacks status`,
     `repo: ${repoRoot}`,
-    ...entries.map(({ entry, pullRequest }) => {
+    ...entries.map(({ entry, pullRequest, remoteBranchExists }) => {
       const parent = entry.parentBookmarkName ?? "<trunk>";
-      return `- ${entry.name} -> ${entry.branchName} | parent: ${parent} | pr: ${formatPr(pullRequest)}`;
+      const remote = remoteBranchExists ? "pushed" : "not pushed";
+      return `- ${entry.name} -> ${entry.branchName} | parent: ${parent} | remote: ${remote} | pr: ${formatPr(pullRequest)}`;
     })
   ].join("\n");
 
 export const renderSyncPlan = (plan: SyncPlan): string =>
   [
     "jjacks sync plan",
-    ...plan.stack.map(({ entry, intendedBaseBranch, pullRequest, actions }) => {
-      const summary = `- ${entry.name} -> ${entry.branchName} | base: ${intendedBaseBranch} | pr: ${formatPr(pullRequest)}`;
+    ...plan.stack.map(({ entry, intendedBaseBranch, pullRequest, remoteBranchExists, actions }) => {
+      const remote = remoteBranchExists ? "pushed" : "not pushed";
+      const summary = `- ${entry.name} -> ${entry.branchName} | base: ${intendedBaseBranch} | remote: ${remote} | pr: ${formatPr(pullRequest)}`;
       const renderedActions = actions.length === 0 ? "  - no changes" : actions.map((action) => `  - ${action}`).join("\n");
       return `${summary}\n${renderedActions}`;
     })
   ].join("\n");
+
+export const renderSyncPreview = (plan: SyncPlan, stackComment: string): string =>
+  [renderSyncPlan(plan), "", "stack comment preview", stackComment].join("\n");

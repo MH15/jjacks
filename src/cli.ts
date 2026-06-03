@@ -3,8 +3,10 @@ import { NodeContext, NodeRuntime } from "@effect/platform-node";
 import { Console, Effect, Layer } from "effect";
 
 import { CliError } from "./errors.js";
+import { renderStackComment } from "./stack.js";
 import { resolveSyncMode } from "./sync-mode.js";
-import { renderDoctor, renderStatus, renderSyncPlan } from "./text.js";
+import { renderDoctor, renderStatus, renderSyncPreview } from "./text.js";
+import { GitServiceLive } from "./services/GitService.js";
 import { GitHubServiceLive } from "./services/GitHubService.js";
 import { JjServiceLive } from "./services/JjService.js";
 import { ProcessServiceLive } from "./services/ProcessService.js";
@@ -15,6 +17,7 @@ const sharedLayer = Layer.mergeAll(
   ProcessServiceLive,
   RepoServiceLive,
   JjServiceLive,
+  GitServiceLive,
   GitHubServiceLive,
   StackServiceLive
 );
@@ -28,8 +31,10 @@ const doctor = Command.make("doctor", {}, () =>
       renderDoctor([
         `repo root: ${status.repoRoot}`,
         `current stack entries: ${status.entries.length}`,
-        ...status.entries.map(({ entry, pullRequest }) =>
-          `${entry.name}: branch ${entry.branchName}${pullRequest === null ? ", no PR yet" : `, PR #${pullRequest.number}`}`
+        ...status.entries.map(({ entry, pullRequest, remoteBranchExists }) =>
+          `${entry.name}: branch ${entry.branchName}, ${remoteBranchExists ? "pushed" : "not pushed"}${
+            pullRequest === null ? ", no PR yet" : `, PR #${pullRequest.number}`
+          }`
         )
       ])
     );
@@ -54,15 +59,32 @@ const dryRun = Options.boolean("dry-run").pipe(
 const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
   Effect.gen(function* () {
     const stackService = yield* StackService;
-    const plan = yield* stackService.buildSyncPlan;
     const mode = resolveSyncMode({ execute, dryRun });
 
     if (mode === "execute") {
-      yield* Console.log(`${renderSyncPlan(plan)}\n\nexecute mode is not implemented yet; planning only for now`);
+      const result = yield* stackService.executeSync;
+      const preview = renderSyncPreview(result.plan, renderStackComment(result.statusEntries));
+      const pushedSummary =
+        result.pushedBookmarks.length === 0
+          ? "no bookmark pushes were needed"
+          : `pushed bookmarks:\n${result.pushedBookmarks.map((name) => `- ${name}`).join("\n")}`;
+      const createdSummary =
+        result.createdPullRequestBookmarks.length === 0
+          ? "no pull requests were created"
+          : `created pull requests for bookmarks:\n${result.createdPullRequestBookmarks.map((name) => `- ${name}`).join("\n")}`;
+      const updatedSummary =
+        result.updatedPullRequestNumbers.length === 0
+          ? "no pull requests were updated"
+          : `updated pull requests:\n${result.updatedPullRequestNumbers.map((number) => `- #${number}`).join("\n")}`;
+
+      yield* Console.log(`${preview}\n\n${pushedSummary}\n${createdSummary}\n${updatedSummary}`);
       return;
     }
 
-    yield* Console.log(renderSyncPlan(plan));
+    const status = yield* stackService.getStatus;
+    const plan = yield* stackService.buildSyncPlan;
+    const preview = renderSyncPreview(plan, renderStackComment(status.entries));
+    yield* Console.log(preview);
   })
 );
 

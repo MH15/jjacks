@@ -5,13 +5,17 @@ const STACK_COMMENT_MARKER = "<!-- jjacks:stack -->";
 const buildPlanActions = (
   entry: StackEntry,
   pullRequest: PullRequestSummary | null,
-  intendedBaseBranch: string
+  intendedBaseBranch: string,
+  remoteBranchExists: boolean
 ): ReadonlyArray<string> => [
+  ...(remoteBranchExists ? [] : [`push bookmark with "jj git push --bookmark ${entry.name}" before opening or updating its PR`]),
   ...(pullRequest === null ? [`create PR titled "${entry.name}" with base ${intendedBaseBranch}`] : []),
+  ...(pullRequest !== null && pullRequest.title !== entry.name
+    ? [`rename PR #${pullRequest.number} from "${pullRequest.title}" to "${entry.name}"`]
+    : []),
   ...(pullRequest !== null && pullRequest.baseRefName !== intendedBaseBranch
     ? [`retarget PR #${pullRequest.number} base from ${pullRequest.baseRefName} to ${intendedBaseBranch}`]
     : []),
-  "push skipped by default; manual push required before execute mode can succeed",
   "ensure stack-link comment is present and up to date"
 ];
 
@@ -22,12 +26,14 @@ export const buildSyncPlanFromStatus = (
   stack: entries.map(({ entry, pullRequest }, index): SyncPlanEntry => {
     const parent = entries[index - 1]?.entry;
     const intendedBaseBranch = parent?.branchName ?? defaultBranch;
+    const remoteBranchExists = entries[index]!.remoteBranchExists;
 
     return {
       entry,
       intendedBaseBranch,
       pullRequest,
-      actions: buildPlanActions(entry, pullRequest, intendedBaseBranch)
+      remoteBranchExists,
+      actions: buildPlanActions(entry, pullRequest, intendedBaseBranch, remoteBranchExists)
     };
   })
 });
