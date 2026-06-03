@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { Effect, Layer } from "effect";
 
-import type { RepoInfo, StackEntry } from "../src/domain.js";
-import { renderStackComment, stackCommentMarker } from "../src/stack.js";
-import { GitService } from "../src/services/GitService.js";
-import { GitHubService } from "../src/services/GitHubService.js";
-import { JjService } from "../src/services/JjService.js";
-import { ProcessService } from "../src/services/ProcessService.js";
-import { RepoService } from "../src/services/RepoService.js";
-import { StackService, StackServiceLive } from "../src/services/StackService.js";
+import type { RepoInfo, StackEntry } from "../src/domain";
+import { renderStackComment, stackCommentMarker } from "../src/stack";
+import { GitService } from "../src/services/GitService";
+import { GitHubService } from "../src/services/GitHubService";
+import { JjService } from "../src/services/JjService";
+import { ProcessService } from "../src/services/ProcessService";
+import { RepoService } from "../src/services/RepoService";
+import { StackService, StackServiceLive } from "../src/services/StackService";
 
 const stack: ReadonlyArray<StackEntry> = [
   {
@@ -80,6 +80,7 @@ const makeLayer = (options?: {
   const updatedPullRequests: Array<number> = [];
 
   const jjLayer = Layer.succeed(JjService, {
+    ensureAdvanceBookmarksEnabled: Effect.void,
     getCurrentStack: Effect.succeed(stack)
   });
 
@@ -121,7 +122,11 @@ const makeLayer = (options?: {
   });
 
   const gitLayer = Layer.succeed(GitService, {
-    remoteBranchExists: (branchName: string) => Effect.succeed(pushedBranches.has(branchName)),
+    getBookmarkRemoteState: (bookmarkName: string) =>
+      Effect.succeed({
+        remoteBranchExists: pushedBranches.has(bookmarkName),
+        needsBookmarkPush: !pushedBranches.has(bookmarkName)
+      }),
     pushBookmark: (bookmarkName: string) =>
       Effect.sync(() => {
         pushedBookmarks.push(bookmarkName);
@@ -154,12 +159,14 @@ describe("StackService with injected fakes", () => {
     expect(plan.stack).toHaveLength(2);
     expect(plan.stack[0]).toMatchObject({
       intendedBaseBranch: "main",
-      remoteBranchExists: true
+      remoteBranchExists: true,
+      needsBookmarkPush: false
     });
     expect(plan.stack[0]?.actions).not.toContainEqual(expect.stringContaining('create PR titled "feat/base"'));
     expect(plan.stack[1]).toMatchObject({
       intendedBaseBranch: "feat/base",
-      remoteBranchExists: false
+      remoteBranchExists: false,
+      needsBookmarkPush: true
     });
     expect(plan.stack[1]?.actions).toContain('push bookmark with "jj git push --bookmark feat/ui" before opening or updating its PR');
     expect(plan.stack[1]?.actions).toContain('create PR titled "feat/ui" with base feat/base');
@@ -176,8 +183,10 @@ describe("StackService with injected fakes", () => {
     expect(status.repoRoot).toBe("/tmp/repo");
     expect(status.entries[0]?.pullRequest?.number).toBe(12);
     expect(status.entries[0]?.remoteBranchExists).toBe(true);
+    expect(status.entries[0]?.needsBookmarkPush).toBe(false);
     expect(status.entries[1]?.pullRequest).toBeNull();
     expect(status.entries[1]?.remoteBranchExists).toBe(false);
+    expect(status.entries[1]?.needsBookmarkPush).toBe(true);
   });
 
   it("pushes missing bookmarks during execute sync and refreshes status", async () => {
@@ -236,12 +245,14 @@ describe("renderStackComment", () => {
           baseRefName: "main",
           isDraft: false
         },
-        remoteBranchExists: true
+        remoteBranchExists: true,
+        needsBookmarkPush: false
       },
       {
         entry: stack[1]!,
         pullRequest: null,
-        remoteBranchExists: false
+        remoteBranchExists: false,
+        needsBookmarkPush: true
       }
     ]);
 

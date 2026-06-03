@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 
 import { Context, Effect, Layer } from "effect";
 
-import { CliError } from "../errors.js";
+import { CliError } from "../errors";
 
 export interface ProcessResult {
   readonly stdout: string;

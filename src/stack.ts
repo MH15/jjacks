@@ -1,4 +1,4 @@
-import type { PullRequestSummary, StackEntry, StackStatusEntry, SyncPlan, SyncPlanEntry } from "./domain.js";
+import type { PullRequestSummary, StackEntry, StackStatusEntry, SyncPlan, SyncPlanEntry } from "./domain";
 
 const STACK_COMMENT_MARKER = "<!-- jjacks:stack -->";
 
@@ -6,9 +6,10 @@ const buildPlanActions = (
   entry: StackEntry,
   pullRequest: PullRequestSummary | null,
   intendedBaseBranch: string,
-  remoteBranchExists: boolean
+  remoteBranchExists: boolean,
+  needsBookmarkPush: boolean
 ): ReadonlyArray<string> => [
-  ...(remoteBranchExists ? [] : [`push bookmark with "jj git push --bookmark ${entry.name}" before opening or updating its PR`]),
+  ...(needsBookmarkPush ? [`push bookmark with "jj git push --bookmark ${entry.name}" before opening or updating its PR`] : []),
   ...(pullRequest === null ? [`create PR titled "${entry.name}" with base ${intendedBaseBranch}`] : []),
   ...(pullRequest !== null && pullRequest.title !== entry.name
     ? [`rename PR #${pullRequest.number} from "${pullRequest.title}" to "${entry.name}"`]
@@ -27,13 +28,15 @@ export const buildSyncPlanFromStatus = (
     const parent = entries[index - 1]?.entry;
     const intendedBaseBranch = parent?.branchName ?? defaultBranch;
     const remoteBranchExists = entries[index]!.remoteBranchExists;
+    const needsBookmarkPush = entries[index]!.needsBookmarkPush;
 
     return {
       entry,
       intendedBaseBranch,
       pullRequest,
       remoteBranchExists,
-      actions: buildPlanActions(entry, pullRequest, intendedBaseBranch, remoteBranchExists)
+      needsBookmarkPush,
+      actions: buildPlanActions(entry, pullRequest, intendedBaseBranch, remoteBranchExists, needsBookmarkPush)
     };
   })
 });
