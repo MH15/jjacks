@@ -81,8 +81,14 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
         result.updatedPullRequestNumbers.length === 0
           ? "no pull requests were updated"
           : `updated pull requests:\n${result.updatedPullRequestNumbers.map((number) => `- #${number}`).join("\n")}`;
+      const commentSummary =
+        result.updatedCommentPullRequestNumbers.length === 0
+          ? "no stack comments were updated"
+          : `updated stack comments on pull requests:\n${result.updatedCommentPullRequestNumbers
+              .map((number) => `- #${number}`)
+              .join("\n")}`;
 
-      yield* Console.log(`${preview}\n\n${pushedSummary}\n${createdSummary}\n${updatedSummary}`);
+      yield* Console.log(`${preview}\n\n${pushedSummary}\n${createdSummary}\n${updatedSummary}\n${commentSummary}`);
       return;
     }
 

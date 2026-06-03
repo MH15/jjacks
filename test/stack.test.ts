@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Layer } from "effect";
 
-import type { RepoInfo, StackEntry } from "../src/domain";
+import type { PullRequestComment, RepoInfo, StackEntry } from "../src/domain";
+import { CliError } from "../src/errors";
 import { renderStackComment, stackCommentMarker } from "../src/stack";
 import { GitService } from "../src/services/GitService";
 import { GitHubService } from "../src/services/GitHubService";
@@ -15,6 +16,7 @@ const stack: ReadonlyArray<StackEntry> = [
     name: "feat/base",
     changeId: "aaa111",
     commitId: "111aaa",
+    description: "feat/base",
     parentBookmarkName: undefined,
     branchName: "feat/base"
   },
@@ -22,6 +24,7 @@ const stack: ReadonlyArray<StackEntry> = [
     name: "feat/ui",
     changeId: "bbb222",
     commitId: "222bbb",
+    description: "feat/ui",
     parentBookmarkName: "feat/base",
     branchName: "feat/ui"
   }
@@ -78,10 +81,28 @@ const makeLayer = (options?: {
   }
   const createdPullRequests: Array<string> = [];
   const updatedPullRequests: Array<number> = [];
+  const issueComments = new Map<number, Array<PullRequestComment>>([
+    [
+      12,
+      [
+        {
+          id: 1001,
+          url: "https://github.com/MH15/jjacks/issues/comments/1001",
+          body: "old comment"
+        }
+      ]
+    ]
+  ]);
+  const updatedCommentPullRequests: Array<number> = [];
+  const describedBookmarks: Array<string> = [];
 
   const jjLayer = Layer.succeed(JjService, {
     ensureAdvanceBookmarksEnabled: Effect.void,
-    getCurrentStack: Effect.succeed(stack)
+    getCurrentStack: Effect.succeed(stack),
+    ensureBookmarkDescription: (bookmarkName: string) =>
+      Effect.sync(() => {
+        describedBookmarks.push(bookmarkName);
+      })
   });
 
   const repoLayer = Layer.succeed(RepoService, {
@@ -118,6 +139,29 @@ const makeLayer = (options?: {
             return;
           }
         }
+      }),
+    listIssueComments: (pullRequestNumber: number) => Effect.succeed(issueComments.get(pullRequestNumber) ?? []),
+    createIssueComment: ({ pullRequestNumber, body }) =>
+      Effect.sync(() => {
+        const comments = issueComments.get(pullRequestNumber) ?? [];
+        comments.push({
+          id: pullRequestNumber * 1000,
+          url: `https://github.com/MH15/jjacks/issues/comments/${pullRequestNumber * 1000}`,
+          body
+        });
+        issueComments.set(pullRequestNumber, comments);
+        updatedCommentPullRequests.push(pullRequestNumber);
+      }),
+    updateIssueComment: ({ commentId, body }) =>
+      Effect.sync(() => {
+        for (const [pullRequestNumber, comments] of issueComments.entries()) {
+          const existing = comments.find((comment) => comment.id === commentId);
+          if (existing !== undefined) {
+            existing.body = body;
+            updatedCommentPullRequests.push(pullRequestNumber);
+            return;
+          }
+        }
       })
   });
 
@@ -143,7 +187,9 @@ const makeLayer = (options?: {
     layer: Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive),
     pushedBookmarks,
     createdPullRequests,
-    updatedPullRequests
+    updatedPullRequests,
+    updatedCommentPullRequests,
+    describedBookmarks
   };
 };
 
@@ -204,8 +250,10 @@ describe("StackService with injected fakes", () => {
     expect(result.pushedBookmarks).toEqual(["feat/ui"]);
     expect(result.createdPullRequestBookmarks).toEqual(["feat/ui"]);
     expect(result.updatedPullRequestNumbers).toEqual([]);
+    expect(result.updatedCommentPullRequestNumbers).toEqual([12, 13]);
     expect(result.statusEntries.every((entry) => entry.remoteBranchExists)).toBe(true);
     expect(result.statusEntries[1]?.pullRequest?.headRefName).toBe("feat/ui");
+    expect(harness.describedBookmarks).toEqual([]);
   });
 
   it("updates existing PR metadata instead of creating a duplicate", async () => {
@@ -227,8 +275,162 @@ describe("StackService with injected fakes", () => {
     expect(harness.updatedPullRequests).toEqual([13]);
     expect(result.createdPullRequestBookmarks).toEqual([]);
     expect(result.updatedPullRequestNumbers).toEqual([13]);
+    expect(result.updatedCommentPullRequestNumbers).toEqual([12, 13]);
     expect(result.statusEntries[1]?.pullRequest?.title).toBe("feat/ui");
     expect(result.statusEntries[1]?.pullRequest?.baseRefName).toBe("feat/base");
+    expect(harness.describedBookmarks).toEqual([]);
+  });
+
+  it("fills blank jj change descriptions from bookmark names before pushing", async () => {
+    const describedBookmarks: Array<string> = [];
+    let currentStack: ReadonlyArray<StackEntry> = [
+      {
+        name: "feat/ui",
+        changeId: "bbb222",
+        commitId: "222bbb",
+        description: "",
+        parentBookmarkName: undefined,
+        branchName: "feat/ui"
+      }
+    ];
+
+    const jjLayer = Layer.succeed(JjService, {
+      ensureAdvanceBookmarksEnabled: Effect.void,
+      getCurrentStack: Effect.sync(() => currentStack),
+      ensureBookmarkDescription: (bookmarkName: string) =>
+        Effect.sync(() => {
+          describedBookmarks.push(bookmarkName);
+          currentStack = currentStack.map((entry) =>
+            entry.name === bookmarkName ? { ...entry, description: bookmarkName } : entry
+          );
+        })
+    });
+
+    const repoLayer = Layer.succeed(RepoService, {
+      getRepoInfo: Effect.succeed(repoInfo)
+    });
+
+    const pullRequests = new Map<
+      string,
+      {
+        number: number;
+        url: string;
+        title: string;
+        headRefName: string;
+        baseRefName: string;
+        isDraft: boolean;
+      }
+    >();
+    const githubLayer = Layer.succeed(GitHubService, {
+      findPullRequestByHead: (branchName: string) => Effect.succeed(pullRequests.get(branchName) ?? null),
+      createPullRequest: ({ headBranch, baseBranch, title }) =>
+        Effect.sync(() => {
+          const created = {
+            number: 13,
+            url: "https://github.com/MH15/jjacks/pull/13",
+            title,
+            headRefName: headBranch,
+            baseRefName: baseBranch,
+            isDraft: false
+          };
+          pullRequests.set(headBranch, created);
+          return created;
+        }),
+      updatePullRequest: () => Effect.void,
+      listIssueComments: () => Effect.succeed([]),
+      createIssueComment: () => Effect.void,
+      updateIssueComment: () => Effect.void
+    });
+
+    let pushed = false;
+    const gitLayer = Layer.succeed(GitService, {
+      getBookmarkRemoteState: () =>
+        Effect.succeed({
+          remoteBranchExists: pushed,
+          needsBookmarkPush: !pushed
+        }),
+      pushBookmark: () =>
+        Effect.sync(() => {
+          pushed = true;
+        })
+    });
+
+    const processLayer = Layer.succeed(ProcessService, {
+      run: () =>
+        Effect.die("ProcessService should not be used when fake JJ/GitHub/Repo services are provided.")
+    });
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const stackService = yield* StackService;
+        return yield* stackService.executeSync;
+      }).pipe(Effect.provide(Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive)))
+    );
+
+    expect(describedBookmarks).toEqual(["feat/ui"]);
+    expect(result.pushedBookmarks).toEqual(["feat/ui"]);
+    expect(result.createdPullRequestBookmarks).toEqual(["feat/ui"]);
+  });
+
+  it("fails before PR creation when a bookmark still is not published after pushing", async () => {
+    const jjLayer = Layer.succeed(JjService, {
+      ensureAdvanceBookmarksEnabled: Effect.void,
+      getCurrentStack: Effect.succeed([
+        {
+          name: "feat/ui",
+          changeId: "bbb222",
+          commitId: "222bbb",
+          description: "feat/ui",
+          parentBookmarkName: undefined,
+          branchName: "feat/ui"
+        }
+      ] satisfies ReadonlyArray<StackEntry>),
+      ensureBookmarkDescription: () => Effect.void
+    });
+
+    const repoLayer = Layer.succeed(RepoService, {
+      getRepoInfo: Effect.succeed(repoInfo)
+    });
+
+    const githubLayer = Layer.succeed(GitHubService, {
+      findPullRequestByHead: () => Effect.succeed(null),
+      createPullRequest: () => Effect.die("createPullRequest should not run without a published remote branch."),
+      updatePullRequest: () => Effect.void,
+      listIssueComments: () => Effect.succeed([]),
+      createIssueComment: () => Effect.void,
+      updateIssueComment: () => Effect.void
+    });
+
+    const gitLayer = Layer.succeed(GitService, {
+      getBookmarkRemoteState: () =>
+        Effect.succeed({
+          remoteBranchExists: false,
+          needsBookmarkPush: true
+        }),
+      pushBookmark: () => Effect.void
+    });
+
+    const processLayer = Layer.succeed(ProcessService, {
+      run: () =>
+        Effect.die("ProcessService should not be used when fake JJ/GitHub/Repo services are provided.")
+    });
+
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const stackService = yield* StackService;
+        return yield* stackService.executeSync;
+      }).pipe(Effect.provide(Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive)))
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(CliError);
+        expect(failure.value.message).toContain("still not published on origin after push");
+      }
+    }
   });
 });
 
