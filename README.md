@@ -11,6 +11,7 @@
 - PR descriptions are never written by the tool.
 - `sync` defaults to dry-run behavior unless `--execute` is passed.
 - The tool will add a stack-link comment to participating PRs.
+- Dry-run output includes the planned stack comment body.
 
 ## Planned commands
 

@@ -21,12 +21,14 @@ export interface PullRequestSummary {
 export interface StackStatusEntry {
   readonly entry: StackEntry;
   readonly pullRequest: PullRequestSummary | null;
+  readonly remoteBranchExists: boolean;
 }
 
 export interface SyncPlanEntry {
   readonly entry: StackEntry;
   readonly intendedBaseBranch: string;
   readonly pullRequest: PullRequestSummary | null;
+  readonly remoteBranchExists: boolean;
   readonly actions: ReadonlyArray<string>;
 }
 
@@ -38,4 +40,12 @@ export interface RepoInfo {
   readonly root: string;
   readonly gitRemote: string | undefined;
   readonly defaultBranch: string | undefined;
+}
+
+export interface ExecuteSyncResult {
+  readonly pushedBookmarks: ReadonlyArray<string>;
+  readonly createdPullRequestBookmarks: ReadonlyArray<string>;
+  readonly updatedPullRequestNumbers: ReadonlyArray<number>;
+  readonly plan: SyncPlan;
+  readonly statusEntries: ReadonlyArray<StackStatusEntry>;
 }

@@ -26,11 +26,17 @@ const parseTemplateLine = (line: string): BookmarkNode | null => {
     return null;
   }
 
+  const resolvedParentBookmarkName =
+    parentBookmarkName
+      ?.split("|")
+      .flatMap((segment) => segment.split(","))
+      .find((segment) => segment.length > 0) ?? undefined;
+
   return {
     name,
     changeId,
     commitId,
-    parentBookmarkName: parentBookmarkName || undefined
+    parentBookmarkName: resolvedParentBookmarkName
   };
 };
 
@@ -39,9 +45,9 @@ const make = {
     const process = yield* ProcessService;
     const template =
       `bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ change_id.short() ++ "\t" ++ commit_id.short() ++ "\t" ++ ` +
-      `parents.map(|p| p.bookmarks().map(|b| b.name()).join(",")).filter(|n| n != "").join(",") ++ "\n"`;
+      `parents.map(|p| p.bookmarks().map(|b| b.name()).join(",")).join("|") ++ "\n"`;
 
-    const current = yield* process.run("jj", ["log", "-r", "::@ & bookmarks()", "-T", template], {
+    const current = yield* process.run("jj", ["log", "-r", "::@ & bookmarks() ~ trunk()", "-T", template, "--no-graph"], {
       allowNonZeroExit: true
     });
 
@@ -62,10 +68,7 @@ const make = {
       .split("\n")
       .map((line) => parseTemplateLine(line))
       .filter((node): node is BookmarkNode => node !== null)
-      .map((node) => ({
-        ...node,
-        parentBookmarkName: node.parentBookmarkName?.split(",")[0]
-      }));
+      .map((node) => node);
 
     if (nodes.length === 0) {
       return yield* Effect.fail(new CliError("No bookmarks found in the current stack."));
