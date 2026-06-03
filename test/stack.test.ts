@@ -16,14 +16,14 @@ const stack: ReadonlyArray<StackEntry> = [
     changeId: "aaa111",
     commitId: "111aaa",
     parentBookmarkName: undefined,
-    branchName: "jj/feat/base"
+    branchName: "feat/base"
   },
   {
     name: "feat/ui",
     changeId: "bbb222",
     commitId: "222bbb",
     parentBookmarkName: "feat/base",
-    branchName: "jj/feat/ui"
+    branchName: "feat/ui"
   }
 ];
 
@@ -40,7 +40,7 @@ const makeLayer = (options?: {
     readonly baseRefName: string;
   };
 }) => {
-  const pushedBranches = new Set(options?.initiallyPushed ?? ["jj/feat/base"]);
+  const pushedBranches = new Set(options?.initiallyPushed ?? ["feat/base"]);
   const pushedBookmarks: Array<string> = [];
   const pullRequests = new Map<
     string,
@@ -54,12 +54,12 @@ const makeLayer = (options?: {
     }
   >([
     [
-      "jj/feat/base",
+      "feat/base",
       {
         number: 12,
         url: "https://github.com/MH15/jjacks/pull/12",
         title: "feat/base",
-        headRefName: "jj/feat/base",
+        headRefName: "feat/base",
         baseRefName: "main",
         isDraft: false
       }
@@ -67,11 +67,11 @@ const makeLayer = (options?: {
   ]);
 
   if (options?.existingChildPr !== undefined) {
-    pullRequests.set("jj/feat/ui", {
+    pullRequests.set("feat/ui", {
       number: 13,
       url: "https://github.com/MH15/jjacks/pull/13",
       title: options.existingChildPr.title,
-      headRefName: "jj/feat/ui",
+      headRefName: "feat/ui",
       baseRefName: options.existingChildPr.baseRefName,
       isDraft: false
     });
@@ -125,7 +125,7 @@ const makeLayer = (options?: {
     pushBookmark: (bookmarkName: string) =>
       Effect.sync(() => {
         pushedBookmarks.push(bookmarkName);
-        pushedBranches.add(`jj/${bookmarkName}`);
+        pushedBranches.add(bookmarkName);
       })
   });
 
@@ -158,11 +158,11 @@ describe("StackService with injected fakes", () => {
     });
     expect(plan.stack[0]?.actions).not.toContainEqual(expect.stringContaining('create PR titled "feat/base"'));
     expect(plan.stack[1]).toMatchObject({
-      intendedBaseBranch: "jj/feat/base",
+      intendedBaseBranch: "feat/base",
       remoteBranchExists: false
     });
     expect(plan.stack[1]?.actions).toContain('push bookmark with "jj git push --bookmark feat/ui" before opening or updating its PR');
-    expect(plan.stack[1]?.actions).toContain('create PR titled "feat/ui" with base jj/feat/base');
+    expect(plan.stack[1]?.actions).toContain('create PR titled "feat/ui" with base feat/base');
   });
 
   it("returns repo-scoped status entries with PR lookup results", async () => {
@@ -190,18 +190,18 @@ describe("StackService with injected fakes", () => {
     );
 
     expect(harness.pushedBookmarks).toEqual(["feat/ui"]);
-    expect(harness.createdPullRequests).toEqual(["jj/feat/ui"]);
+    expect(harness.createdPullRequests).toEqual(["feat/ui"]);
     expect(harness.updatedPullRequests).toEqual([]);
     expect(result.pushedBookmarks).toEqual(["feat/ui"]);
     expect(result.createdPullRequestBookmarks).toEqual(["feat/ui"]);
     expect(result.updatedPullRequestNumbers).toEqual([]);
     expect(result.statusEntries.every((entry) => entry.remoteBranchExists)).toBe(true);
-    expect(result.statusEntries[1]?.pullRequest?.headRefName).toBe("jj/feat/ui");
+    expect(result.statusEntries[1]?.pullRequest?.headRefName).toBe("feat/ui");
   });
 
   it("updates existing PR metadata instead of creating a duplicate", async () => {
     const harness = makeLayer({
-      initiallyPushed: ["jj/feat/base", "jj/feat/ui"],
+      initiallyPushed: ["feat/base", "feat/ui"],
       existingChildPr: {
         title: "old title",
         baseRefName: "main"
@@ -219,7 +219,7 @@ describe("StackService with injected fakes", () => {
     expect(result.createdPullRequestBookmarks).toEqual([]);
     expect(result.updatedPullRequestNumbers).toEqual([13]);
     expect(result.statusEntries[1]?.pullRequest?.title).toBe("feat/ui");
-    expect(result.statusEntries[1]?.pullRequest?.baseRefName).toBe("jj/feat/base");
+    expect(result.statusEntries[1]?.pullRequest?.baseRefName).toBe("feat/base");
   });
 });
 
@@ -232,7 +232,7 @@ describe("renderStackComment", () => {
           number: 12,
           url: "https://github.com/MH15/jjacks/pull/12",
           title: "feat/base",
-          headRefName: "jj/feat/base",
+          headRefName: "feat/base",
           baseRefName: "main",
           isDraft: false
         },

@@ -11,10 +11,8 @@ export class JjService extends Context.Tag("JjService")<
   }
 >() {}
 
-const BRANCH_PREFIX = "jj/";
-
 const deriveBranchName = (bookmarkName: string): string =>
-  `${BRANCH_PREFIX}${bookmarkName.replace(/[^A-Za-z0-9/_-]+/g, "-")}`;
+  bookmarkName.replace(/[^A-Za-z0-9/_-]+/g, "-");
 
 const parseTemplateLine = (line: string): BookmarkNode | null => {
   if (line.length === 0) {
@@ -47,9 +45,13 @@ const make = {
       `bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ change_id.short() ++ "\t" ++ commit_id.short() ++ "\t" ++ ` +
       `parents.map(|p| p.bookmarks().map(|b| b.name()).join(",")).join("|") ++ "\n"`;
 
-    const current = yield* process.run("jj", ["log", "-r", "::@ & bookmarks() ~ trunk()", "-T", template, "--no-graph"], {
-      allowNonZeroExit: true
-    });
+    const current = yield* process.run(
+      "jj",
+      ["log", "-r", "::@ & bookmarks() & ~::trunk()", "-T", template, "--no-graph"],
+      {
+        allowNonZeroExit: true
+      }
+    );
 
     if (current.exitCode !== 0) {
       if (current.stderr.includes("There is no jj repo")) {
