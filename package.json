@@ -1,0 +1,29 @@
+{
+  "name": "jjacks",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sync a jj bookmark stack with GitHub pull requests.",
+  "type": "module",
+  "bin": {
+    "jjacks": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "start": "node --enable-source-maps dist/cli.js",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@effect/cli": "^0.75.1",
+    "@effect/platform-node": "^0.106.0",
+    "effect": "^3.21.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.1",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
