@@ -1,5 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 
+import { buildDiffArgs, type DiffFormat } from "../diff";
 import type { BookmarkNode, StackEntry } from "../domain";
 import { CliError } from "../errors";
 import { ProcessService } from "./ProcessService";
@@ -13,6 +14,12 @@ export class JjService extends Context.Tag("JjService")<
       bookmarkName: string,
       description: string
     ) => Effect.Effect<void, CliError, ProcessService>;
+    readonly createBookmark: (bookmarkName: string) => Effect.Effect<void, CliError, ProcessService>;
+    readonly diffCurrentStack: (options: {
+      readonly defaultBranch: string;
+      readonly against?: string;
+      readonly format: DiffFormat;
+    }) => Effect.Effect<string, CliError, ProcessService>;
   }
 >() {}
 
@@ -67,6 +74,35 @@ const make = {
     Effect.gen(function* () {
       const process = yield* ProcessService;
       yield* process.run("jj", ["describe", "-m", description, bookmarkName]);
+    }),
+
+  createBookmark: (bookmarkName: string) =>
+    Effect.gen(function* () {
+      const process = yield* ProcessService;
+      yield* ensureAdvanceBookmarksEnabled;
+      yield* process.run("jj", ["bookmark", "create", bookmarkName]);
+    }),
+
+  diffCurrentStack: ({
+    defaultBranch,
+    against,
+    format
+  }: {
+    readonly defaultBranch: string;
+    readonly against?: string;
+    readonly format: DiffFormat;
+  }) =>
+    Effect.gen(function* () {
+      const process = yield* ProcessService;
+      const stack = yield* make.getCurrentStack;
+      const args = buildDiffArgs({
+        stack,
+        defaultBranch,
+        ...(against === undefined ? {} : { against }),
+        format
+      });
+      const result = yield* process.run("jj", args);
+      return result.stdout;
     }),
 
   getCurrentStack: Effect.gen(function* () {

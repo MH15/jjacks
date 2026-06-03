@@ -102,7 +102,9 @@ const makeLayer = (options?: {
     ensureBookmarkDescription: (bookmarkName: string) =>
       Effect.sync(() => {
         describedBookmarks.push(bookmarkName);
-      })
+      }),
+    createBookmark: () => Effect.void,
+    diffCurrentStack: () => Effect.succeed("")
   });
 
   const repoLayer = Layer.succeed(RepoService, {
@@ -251,6 +253,7 @@ describe("StackService with injected fakes", () => {
     expect(result.createdPullRequestBookmarks).toEqual(["feat/ui"]);
     expect(result.updatedPullRequestNumbers).toEqual([]);
     expect(result.updatedCommentPullRequestNumbers).toEqual([12, 13]);
+    expect(result.warnings).toEqual([]);
     expect(result.statusEntries.every((entry) => entry.remoteBranchExists)).toBe(true);
     expect(result.statusEntries[1]?.pullRequest?.headRefName).toBe("feat/ui");
     expect(harness.describedBookmarks).toEqual([]);
@@ -276,6 +279,7 @@ describe("StackService with injected fakes", () => {
     expect(result.createdPullRequestBookmarks).toEqual([]);
     expect(result.updatedPullRequestNumbers).toEqual([13]);
     expect(result.updatedCommentPullRequestNumbers).toEqual([12, 13]);
+    expect(result.warnings).toEqual([]);
     expect(result.statusEntries[1]?.pullRequest?.title).toBe("feat/ui");
     expect(result.statusEntries[1]?.pullRequest?.baseRefName).toBe("feat/base");
     expect(harness.describedBookmarks).toEqual([]);
@@ -303,7 +307,9 @@ describe("StackService with injected fakes", () => {
           currentStack = currentStack.map((entry) =>
             entry.name === bookmarkName ? { ...entry, description: bookmarkName } : entry
           );
-        })
+        }),
+      createBookmark: () => Effect.void,
+      diffCurrentStack: () => Effect.succeed("")
     });
 
     const repoLayer = Layer.succeed(RepoService, {
@@ -370,6 +376,7 @@ describe("StackService with injected fakes", () => {
     expect(describedBookmarks).toEqual(["feat/ui"]);
     expect(result.pushedBookmarks).toEqual(["feat/ui"]);
     expect(result.createdPullRequestBookmarks).toEqual(["feat/ui"]);
+    expect(result.warnings).toEqual([]);
   });
 
   it("fails before PR creation when a bookmark still is not published after pushing", async () => {
@@ -385,7 +392,9 @@ describe("StackService with injected fakes", () => {
           branchName: "feat/ui"
         }
       ] satisfies ReadonlyArray<StackEntry>),
-      ensureBookmarkDescription: () => Effect.void
+      ensureBookmarkDescription: () => Effect.void,
+      createBookmark: () => Effect.void,
+      diffCurrentStack: () => Effect.succeed("")
     });
 
     const repoLayer = Layer.succeed(RepoService, {

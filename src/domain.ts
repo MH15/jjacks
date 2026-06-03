@@ -56,6 +56,7 @@ export interface ExecuteSyncResult {
   readonly createdPullRequestBookmarks: ReadonlyArray<string>;
   readonly updatedPullRequestNumbers: ReadonlyArray<number>;
   readonly updatedCommentPullRequestNumbers: ReadonlyArray<number>;
+  readonly warnings: ReadonlyArray<string>;
   readonly plan: SyncPlan;
   readonly statusEntries: ReadonlyArray<StackStatusEntry>;
 }

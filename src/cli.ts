@@ -1,7 +1,8 @@
-import { Command, Options } from "@effect/cli";
+import { Args, Command, Options } from "@effect/cli";
 import { NodeContext, NodeRuntime } from "@effect/platform-node";
-import { Console, Effect, Layer } from "effect";
+import { Console, Effect, Layer, Option } from "effect";
 
+import { resolveDiffFormat } from "./diff";
 import { CliError } from "./errors";
 import { renderStackComment } from "./stack";
 import { resolveSyncMode } from "./sync-mode";
@@ -54,6 +55,49 @@ const status = Command.make("status", {}, () =>
   })
 );
 
+const bookmarkName = Args.text({ name: "bookmark-name" });
+
+const create = Command.make("create", { bookmarkName }, ({ bookmarkName }) =>
+  Effect.gen(function* () {
+    const jjService = yield* JjService;
+    yield* jjService.createBookmark(bookmarkName);
+    yield* jjService.ensureBookmarkDescription(bookmarkName, bookmarkName);
+    yield* Console.log(
+      [
+        `created bookmark ${bookmarkName}`,
+        "next:",
+        "  node dist/cli.js sync --dry-run"
+      ].join("\n")
+    );
+  })
+);
+
+const against = Options.text("against").pipe(
+  Options.optional,
+  Options.withDescription("Show the diff against this revset instead of the parent bookmark.")
+);
+const summary = Options.boolean("summary").pipe(
+  Options.withDescription("Show only the changed paths, like `jj diff --summary`.")
+);
+const stat = Options.boolean("stat").pipe(
+  Options.withDescription("Show a histogram of the changes, like `jj diff --stat`.")
+);
+
+const diff = Command.make("diff", { against, summary, stat }, ({ against, summary, stat }) =>
+  Effect.gen(function* () {
+    const jjService = yield* JjService;
+    const format = resolveDiffFormat({ summary, stat });
+    const againstRevset = Option.getOrUndefined(against);
+    const output = yield* jjService.diffCurrentStack({
+      defaultBranch: "main",
+      ...(againstRevset === undefined ? {} : { against: againstRevset }),
+      format
+    });
+
+    yield* Console.log(output);
+  })
+);
+
 const execute = Options.boolean("execute").pipe(
   Options.withDescription("Apply sync actions after planning. Without this flag, sync stays in dry-run mode.")
 );
@@ -81,7 +125,7 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
 );
 
 const root = Command.make("jjacks", {}, () => Console.log("Use a subcommand."))
-  .pipe(Command.withSubcommands([doctor, status, sync]));
+  .pipe(Command.withSubcommands([doctor, status, create, diff, sync]));
 
 const cli = Command.run(root, {
   name: "jjacks",
