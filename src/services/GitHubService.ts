@@ -1,8 +1,8 @@
 import { Context, Effect, Layer } from "effect";
 
-import type { PullRequestSummary } from "../domain.js";
-import { CliError } from "../errors.js";
-import { ProcessService } from "./ProcessService.js";
+import type { PullRequestSummary } from "../domain";
+import { CliError } from "../errors";
+import { ProcessService } from "./ProcessService";
 
 export class GitHubService extends Context.Tag("GitHubService")<
   GitHubService,

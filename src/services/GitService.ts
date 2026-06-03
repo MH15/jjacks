@@ -1,14 +1,19 @@
 import { Context, Effect, Layer } from "effect";
 
-import { CliError } from "../errors.js";
-import { ProcessService } from "./ProcessService.js";
+import { CliError } from "../errors";
+import { ProcessService } from "./ProcessService";
 
 export class GitService extends Context.Tag("GitService")<
   GitService,
   {
-    readonly remoteBranchExists: (
-      branchName: string
-    ) => Effect.Effect<boolean, CliError, ProcessService>;
+    readonly getBookmarkRemoteState: (bookmarkName: string) => Effect.Effect<
+      {
+        readonly remoteBranchExists: boolean;
+        readonly needsBookmarkPush: boolean;
+      },
+      CliError,
+      ProcessService
+    >;
     readonly pushBookmark: (
       bookmarkName: string
     ) => Effect.Effect<void, CliError, ProcessService>;
@@ -16,22 +21,30 @@ export class GitService extends Context.Tag("GitService")<
 >() {}
 
 const make = {
-  remoteBranchExists: (branchName: string) =>
+  getBookmarkRemoteState: (bookmarkName: string) =>
     Effect.gen(function* () {
       const process = yield* ProcessService;
-      const result = yield* process.run(
-        "git",
-        ["ls-remote", "--heads", "origin", branchName],
-        { allowNonZeroExit: true }
-      );
+      const result = yield* process.run("jj", ["bookmark", "list", bookmarkName, "--all-remotes"], {
+        allowNonZeroExit: true
+      });
 
       if (result.exitCode !== 0) {
         return yield* Effect.fail(
-          new CliError(`Failed to check whether origin/${branchName} exists.\n${result.stderr || result.stdout}`)
+          new CliError(`Failed to inspect remote state for bookmark ${bookmarkName}.\n${result.stderr || result.stdout}`)
         );
       }
 
-      return result.stdout.length > 0;
+      const originLine = result.stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .find((line) => line.startsWith("@origin"));
+      const remoteBranchExists = originLine !== undefined;
+      const needsBookmarkPush = originLine === undefined || originLine.includes("(ahead by") || originLine.includes("(behind by");
+
+      return {
+        remoteBranchExists,
+        needsBookmarkPush
+      };
     }),
 
   pushBookmark: (bookmarkName: string) =>
