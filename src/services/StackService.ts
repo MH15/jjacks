@@ -1,12 +1,12 @@
 import { Context, Effect, Layer } from "effect";
 
-import type { ExecuteSyncResult, StackStatusEntry, SyncPlan } from "../domain.js";
-import { buildSyncPlanFromStatus } from "../stack.js";
-import { GitService } from "./GitService.js";
-import { GitHubService } from "./GitHubService.js";
-import { JjService } from "./JjService.js";
-import { ProcessService } from "./ProcessService.js";
-import { RepoService } from "./RepoService.js";
+import type { ExecuteSyncResult, StackStatusEntry, SyncPlan } from "../domain";
+import { buildSyncPlanFromStatus } from "../stack";
+import { GitService } from "./GitService";
+import { GitHubService } from "./GitHubService";
+import { JjService } from "./JjService";
+import { ProcessService } from "./ProcessService";
+import { RepoService } from "./RepoService";
 
 export class StackService extends Context.Tag("StackService")<
   StackService,
@@ -16,17 +16,17 @@ export class StackService extends Context.Tag("StackService")<
         readonly repoRoot: string;
         readonly entries: ReadonlyArray<StackStatusEntry>;
       },
-      import("../errors.js").CliError,
+      import("../errors").CliError,
       JjService | GitHubService | GitService | RepoService | ProcessService
     >;
     readonly buildSyncPlan: Effect.Effect<
       SyncPlan,
-      import("../errors.js").CliError,
+      import("../errors").CliError,
       JjService | GitHubService | GitService | RepoService | ProcessService
     >;
     readonly executeSync: Effect.Effect<
       ExecuteSyncResult,
-      import("../errors.js").CliError,
+      import("../errors").CliError,
       JjService | GitHubService | GitService | RepoService | ProcessService
     >;
   }
@@ -41,12 +41,13 @@ const getStatusEntries = Effect.gen(function* () {
   return yield* Effect.forEach(stack, (entry) =>
     Effect.all({
       pullRequest: gh.findPullRequestByHead(entry.branchName),
-      remoteBranchExists: git.remoteBranchExists(entry.branchName)
+      remoteState: git.getBookmarkRemoteState(entry.name)
     }).pipe(
-      Effect.map(({ pullRequest, remoteBranchExists }) => ({
+      Effect.map(({ pullRequest, remoteState }) => ({
         entry,
         pullRequest,
-        remoteBranchExists
+        remoteBranchExists: remoteState.remoteBranchExists,
+        needsBookmarkPush: remoteState.needsBookmarkPush
       }))
     )
   );
@@ -78,7 +79,7 @@ const make = {
     const repo = yield* RepoService;
     const repoInfo = yield* repo.getRepoInfo;
     const entries = yield* getStatusEntries;
-    const toPush = entries.filter((entry) => !entry.remoteBranchExists).map((entry) => entry.entry.name);
+    const toPush = entries.filter((entry) => entry.needsBookmarkPush).map((entry) => entry.entry.name);
 
     yield* Effect.forEach(toPush, (bookmarkName) => git.pushBookmark(bookmarkName), {
       discard: true

@@ -22,6 +22,7 @@ export interface StackStatusEntry {
   readonly entry: StackEntry;
   readonly pullRequest: PullRequestSummary | null;
   readonly remoteBranchExists: boolean;
+  readonly needsBookmarkPush: boolean;
 }
 
 export interface SyncPlanEntry {
@@ -29,6 +30,7 @@ export interface SyncPlanEntry {
   readonly intendedBaseBranch: string;
   readonly pullRequest: PullRequestSummary | null;
   readonly remoteBranchExists: boolean;
+  readonly needsBookmarkPush: boolean;
   readonly actions: ReadonlyArray<string>;
 }
 

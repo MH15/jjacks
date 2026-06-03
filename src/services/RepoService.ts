@@ -2,9 +2,9 @@ import path from "node:path";
 
 import { Context, Effect, Layer } from "effect";
 
-import type { RepoInfo } from "../domain.js";
-import { CliError } from "../errors.js";
-import { ProcessService } from "./ProcessService.js";
+import type { RepoInfo } from "../domain";
+import { CliError } from "../errors";
+import { ProcessService } from "./ProcessService";
 
 export class RepoService extends Context.Tag("RepoService")<
   RepoService,

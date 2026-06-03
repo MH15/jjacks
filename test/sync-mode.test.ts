@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { CliError } from "../src/errors.js";
-import { resolveSyncMode } from "../src/sync-mode.js";
+import { CliError } from "../src/errors";
+import { resolveSyncMode } from "../src/sync-mode";
 
 describe("resolveSyncMode", () => {
   it("defaults to dry-run when execute is false", () => {
