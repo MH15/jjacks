@@ -3,6 +3,7 @@ import { NodeContext, NodeRuntime } from "@effect/platform-node";
 import { Console, Effect, Layer } from "effect";
 
 import { CliError } from "./errors.js";
+import { resolveSyncMode } from "./sync-mode.js";
 import { renderDoctor, renderStatus, renderSyncPlan } from "./text.js";
 import { GitHubServiceLive } from "./services/GitHubService.js";
 import { JjServiceLive } from "./services/JjService.js";
@@ -46,13 +47,17 @@ const status = Command.make("status", {}, () =>
 const execute = Options.boolean("execute").pipe(
   Options.withDescription("Apply sync actions after planning. Without this flag, sync stays in dry-run mode.")
 );
+const dryRun = Options.boolean("dry-run").pipe(
+  Options.withDescription("Print the sync plan explicitly. This is also the default when --execute is not passed.")
+);
 
-const sync = Command.make("sync", { execute }, ({ execute }) =>
+const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
   Effect.gen(function* () {
     const stackService = yield* StackService;
     const plan = yield* stackService.buildSyncPlan;
+    const mode = resolveSyncMode({ execute, dryRun });
 
-    if (execute) {
+    if (mode === "execute") {
       yield* Console.log(`${renderSyncPlan(plan)}\n\nexecute mode is not implemented yet; planning only for now`);
       return;
     }
