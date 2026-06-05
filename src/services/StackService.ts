@@ -81,6 +81,18 @@ const make = {
     const repo = yield* RepoService;
     const repoInfo = yield* repo.getRepoInfo;
     const entries = yield* getStatusEntries;
+    if (entries.length === 0) {
+      return {
+        pushedBookmarks: [],
+        createdPullRequestBookmarks: [],
+        updatedPullRequestNumbers: [],
+        updatedCommentPullRequestNumbers: [],
+        warnings: [],
+        plan: buildSyncPlanFromStatus([], repoInfo.defaultBranch ?? "main"),
+        statusEntries: []
+      } satisfies ExecuteSyncResult;
+    }
+
     const blankDescriptions = entries
       .map((entry) => entry.entry)
       .filter((entry) => entry.description.trim().length === 0);

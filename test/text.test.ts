@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ExecuteSyncResult, SyncPlan } from "../src/domain";
-import { renderExecuteSummary, renderSyncPreview } from "../src/text";
+import { renderExecuteSummary, renderStatus, renderSyncPreview } from "../src/text";
 
 const plan: SyncPlan = {
   stack: [
@@ -40,6 +40,24 @@ describe("renderSyncPreview", () => {
     expect(output).toContain("jjacks sync plan");
     expect(output).toContain("stack comment preview");
     expect(output).toContain("<!-- jjacks:stack -->");
+  });
+
+  it("renders a friendly empty-state preview when there is no active stack", () => {
+    const output = renderSyncPreview({ stack: [] }, "");
+
+    expect(output).toContain("no active bookmark stack");
+    expect(output).toContain("jjacks create <bookmark-name>");
+    expect(output).not.toContain("stack comment preview");
+  });
+});
+
+describe("renderStatus", () => {
+  it("renders a friendly empty-state status when there is no active stack", () => {
+    const output = renderStatus("/tmp/repo", []);
+
+    expect(output).toContain("jjacks status");
+    expect(output).toContain("no active bookmark stack");
+    expect(output).toContain("jjacks create <bookmark-name>");
   });
 });
 

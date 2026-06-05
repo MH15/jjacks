@@ -237,6 +237,67 @@ describe("StackService with injected fakes", () => {
     expect(status.entries[1]?.needsBookmarkPush).toBe(true);
   });
 
+  it("supports an empty active stack without treating it as an error", async () => {
+    const jjLayer = Layer.succeed(JjService, {
+      ensureAdvanceBookmarksEnabled: Effect.void,
+      getCurrentStack: Effect.succeed([]),
+      ensureBookmarkDescription: () => Effect.void,
+      createBookmark: () => Effect.void,
+      diffCurrentStack: () => Effect.die("diffCurrentStack should not be used in this test.")
+    });
+
+    const repoLayer = Layer.succeed(RepoService, {
+      getRepoInfo: Effect.succeed(repoInfo)
+    });
+
+    const githubLayer = Layer.succeed(GitHubService, {
+      findPullRequestByHead: () => Effect.die("findPullRequestByHead should not be used for an empty stack."),
+      createPullRequest: () => Effect.die("createPullRequest should not be used for an empty stack."),
+      updatePullRequest: () => Effect.void,
+      listIssueComments: () => Effect.succeed([]),
+      createIssueComment: () => Effect.void,
+      updateIssueComment: () => Effect.void
+    });
+
+    const gitLayer = Layer.succeed(GitService, {
+      getBookmarkRemoteState: () => Effect.die("getBookmarkRemoteState should not be used for an empty stack."),
+      pushBookmark: () => Effect.void
+    });
+
+    const processLayer = Layer.succeed(ProcessService, {
+      run: () =>
+        Effect.die("ProcessService should not be used when fake JJ/GitHub/Repo services are provided.")
+    });
+
+    const layer = Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive);
+
+    const status = await Effect.runPromise(
+      Effect.gen(function* () {
+        const stackService = yield* StackService;
+        return yield* stackService.getStatus;
+      }).pipe(Effect.provide(layer))
+    );
+    const plan = await Effect.runPromise(
+      Effect.gen(function* () {
+        const stackService = yield* StackService;
+        return yield* stackService.buildSyncPlan;
+      }).pipe(Effect.provide(layer))
+    );
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const stackService = yield* StackService;
+        return yield* stackService.executeSync;
+      }).pipe(Effect.provide(layer))
+    );
+
+    expect(status.entries).toEqual([]);
+    expect(plan.stack).toEqual([]);
+    expect(result.statusEntries).toEqual([]);
+    expect(result.createdPullRequestBookmarks).toEqual([]);
+    expect(result.pushedBookmarks).toEqual([]);
+    expect(result.warnings).toEqual([]);
+  });
+
   it("pushes missing bookmarks during execute sync and refreshes status", async () => {
     const harness = makeLayer();
     const result = await Effect.runPromise(

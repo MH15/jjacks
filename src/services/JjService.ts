@@ -95,6 +95,11 @@ const make = {
     Effect.gen(function* () {
       const process = yield* ProcessService;
       const stack = yield* make.getCurrentStack;
+      if (stack.length === 0) {
+        return yield* Effect.fail(
+          new CliError("No active bookmark stack found. Run `jjacks create <bookmark-name>` first.")
+        );
+      }
       const args = buildDiffArgs({
         stack,
         defaultBranch,
@@ -139,10 +144,6 @@ const make = {
       .map((line) => parseTemplateLine(line))
       .filter((node): node is BookmarkNode => node !== null)
       .map((node) => node);
-
-    if (nodes.length === 0) {
-      return yield* Effect.fail(new CliError("No bookmarks found in the current stack."));
-    }
 
     const ordered = [...nodes].reverse().map((node) => ({
       ...node,
