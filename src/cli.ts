@@ -1,6 +1,6 @@
 import { Args, Command, Options } from "@effect/cli";
 import { NodeContext, NodeRuntime } from "@effect/platform-node";
-import { confirm } from "@inquirer/prompts";
+import { confirm, select } from "@inquirer/prompts";
 import chalk from "chalk";
 import { Console, Effect, Layer, Option } from "effect";
 
@@ -83,6 +83,26 @@ const create = Command.make("create", { bookmarkName }, ({ bookmarkName }) =>
   })
 ).pipe(Command.withDescription("Open a new child jj change and bookmark it as the next stacked PR."));
 
+const ensureInteractiveTerminal = (action: string) =>
+  Effect.sync(() => {
+    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+      throw new CliError(`${action} requires an interactive terminal so you can choose from multiple child bookmarks.`);
+    }
+  });
+
+const promptForChildBookmark = (parentBookmarkName: string, childBookmarkNames: ReadonlyArray<string>) =>
+  Effect.promise(() =>
+    select({
+      message: `Choose the child bookmark to continue from ${parentBookmarkName}`,
+      choices: childBookmarkNames.map((childBookmarkName) => ({
+        name: childBookmarkName,
+        value: childBookmarkName
+      }))
+    }, {
+      clearPromptOnDone: true
+    })
+  );
+
 const runMoveCommand = <R>(
   direction: "up" | "down",
   move: Effect.Effect<string, CliError, R>
@@ -92,17 +112,42 @@ const runMoveCommand = <R>(
     yield* Console.log([`jjacks ${direction}`, "", "current jj state", workingCopyLog].join("\n"));
   });
 
+const resolveUpMove = Effect.gen(function* () {
+  const jjService = yield* JjService;
+  const trackedBookmarks = yield* jjService.getTrackedBookmarks;
+  const currentEntry = trackedBookmarks.find((entry) => entry.isCurrent);
+
+  if (currentEntry === undefined) {
+    return jjService.moveUp;
+  }
+
+  const childBookmarks = trackedBookmarks.filter((entry) => entry.parentBookmarkName === currentEntry.name);
+
+  if (childBookmarks.length <= 1) {
+    return jjService.moveUp;
+  }
+
+  return Effect.gen(function* () {
+    yield* ensureInteractiveTerminal(`Moving up from ${currentEntry.name}`);
+    const selectedChildBookmark = yield* promptForChildBookmark(
+      currentEntry.name,
+      childBookmarks.map((entry) => entry.name)
+    );
+    return yield* jjService.moveToBookmark(selectedChildBookmark);
+  });
+});
+
 const up = Command.make("up", {}, () =>
   Effect.gen(function* () {
-    const jjService = yield* JjService;
-    yield* runMoveCommand("up", jjService.moveUp);
+    const move = yield* resolveUpMove;
+    yield* runMoveCommand("up", move);
   })
 ).pipe(Command.withDescription("Move up the current bookmark stack with `jj next`."));
 
 const u = Command.make("u", {}, () =>
   Effect.gen(function* () {
-    const jjService = yield* JjService;
-    yield* runMoveCommand("up", jjService.moveUp);
+    const move = yield* resolveUpMove;
+    yield* runMoveCommand("up", move);
   })
 ).pipe(Command.withDescription("Alias for `up`."));
 
