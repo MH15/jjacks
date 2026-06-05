@@ -87,6 +87,55 @@ const parseTemplateLine = (line: string): BookmarkNode | null => {
   };
 };
 
+const stackTemplate =
+  `bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ change_id.short() ++ "\t" ++ commit_id.short() ++ "\t" ++ ` +
+  `description.first_line() ++ "\t" ++ ` +
+  `parents.map(|p| p.bookmarks().map(|b| b.name()).join(",")).join("|") ++ "\n"`;
+
+const orderStackNodes = (
+  allNodes: ReadonlyArray<BookmarkNode>,
+  currentPathNodes: ReadonlyArray<BookmarkNode>
+): ReadonlyArray<BookmarkNode> => {
+  if (currentPathNodes.length === 0) {
+    return [];
+  }
+
+  const seen = new Set(currentPathNodes.map((node) => node.name));
+  const childrenByParent = new Map<string, Array<BookmarkNode>>();
+
+  for (const node of allNodes) {
+    const parentBookmarkName = node.parentBookmarkName;
+    if (parentBookmarkName === undefined) {
+      continue;
+    }
+
+    const existing = childrenByParent.get(parentBookmarkName) ?? [];
+    existing.push(node);
+    childrenByParent.set(parentBookmarkName, existing);
+  }
+
+  const ordered = [...currentPathNodes];
+  let cursor = currentPathNodes[currentPathNodes.length - 1];
+
+  while (cursor !== undefined) {
+    const unseenChildren = (childrenByParent.get(cursor.name) ?? []).filter((node) => !seen.has(node.name));
+    if (unseenChildren.length !== 1) {
+      break;
+    }
+
+    const [child] = unseenChildren;
+    if (child === undefined) {
+      break;
+    }
+
+    ordered.push(child);
+    seen.add(child.name);
+    cursor = child;
+  }
+
+  return ordered;
+};
+
 const make = {
   ensureAdvanceBookmarksEnabled,
 
@@ -216,21 +265,20 @@ const make = {
   getCurrentStack: Effect.gen(function* () {
     const process = yield* ProcessService;
     yield* ensureAdvanceBookmarksEnabled;
-    const template =
-      `bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ change_id.short() ++ "\t" ++ commit_id.short() ++ "\t" ++ ` +
-      `description.first_line() ++ "\t" ++ ` +
-      `parents.map(|p| p.bookmarks().map(|b| b.name()).join(",")).join("|") ++ "\n"`;
 
-    const current = yield* process.run(
-      "jj",
-      ["log", "-r", "::@ & bookmarks() & ~::trunk()", "-T", template, "--no-graph"],
-      {
+    const [allBookmarks, currentPath] = yield* Effect.all([
+      process.run("jj", ["log", "-r", "bookmarks() & ~::trunk()", "-T", stackTemplate, "--no-graph"], {
         allowNonZeroExit: true
-      }
-    );
+      }),
+      process.run("jj", ["log", "-r", "::@ & bookmarks() & ~::trunk()", "-T", stackTemplate, "--no-graph"], {
+        allowNonZeroExit: true
+      })
+    ]);
 
-    if (current.exitCode !== 0) {
-      if (current.stderr.includes("There is no jj repo")) {
+    if (allBookmarks.exitCode !== 0 || currentPath.exitCode !== 0) {
+      const failingResult = allBookmarks.exitCode !== 0 ? allBookmarks : currentPath;
+
+      if (failingResult.stderr.includes("There is no jj repo")) {
         return yield* Effect.fail(
           new CliError('This directory is a Git repo but not a jj repo yet. Run "jj git init" here first, then rerun jjacks.')
         );
@@ -238,17 +286,23 @@ const make = {
 
       return yield* Effect.fail(
         new CliError(
-          [`Failed to inspect the current jj stack.`, current.stderr, current.stdout].filter(Boolean).join("\n")
+          [`Failed to inspect the current jj stack.`, failingResult.stderr, failingResult.stdout]
+            .filter(Boolean)
+            .join("\n")
         )
       );
     }
-    const nodes = current.stdout
-      .split("\n")
-      .map((line) => parseTemplateLine(line))
-      .filter((node): node is BookmarkNode => node !== null)
-      .map((node) => node);
 
-    const ordered = [...nodes].reverse().map((node) => ({
+    const parseNodes = (stdout: string) =>
+      stdout
+        .split("\n")
+        .map((line) => parseTemplateLine(line))
+        .filter((node): node is BookmarkNode => node !== null)
+        .map((node) => node);
+
+    const nodes = parseNodes(allBookmarks.stdout);
+    const currentPathNodes = [...parseNodes(currentPath.stdout)].reverse();
+    const ordered = orderStackNodes(nodes, currentPathNodes).map((node) => ({
       ...node,
       branchName: deriveBranchName(node.name)
     }));
@@ -258,3 +312,4 @@ const make = {
 };
 
 export const JjServiceLive = Layer.effect(JjService, Effect.succeed(make));
+export { orderStackNodes };

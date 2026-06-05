@@ -4,6 +4,7 @@ import { Cause, Effect, Layer } from "effect";
 import type { PullRequestComment, RepoInfo, StackEntry } from "../src/domain";
 import { CliError } from "../src/errors";
 import { renderStackComment, stackCommentMarker } from "../src/stack";
+import { orderStackNodes } from "../src/services/JjService";
 import { GitService } from "../src/services/GitService";
 import { GitHubService } from "../src/services/GitHubService";
 import { JjService } from "../src/services/JjService";
@@ -529,6 +530,84 @@ describe("StackService with injected fakes", () => {
         expect(failure.value.message).toContain("still not published on origin after push");
       }
     }
+  });
+});
+
+describe("orderStackNodes", () => {
+  it("extends the current ancestor path with bookmarked children above the current bookmark", () => {
+    const allNodes = [
+      {
+        name: "feat/base",
+        changeId: "aaa111",
+        commitId: "111aaa",
+        description: "feat/base",
+        parentBookmarkName: undefined
+      },
+      {
+        name: "feat/ui",
+        changeId: "bbb222",
+        commitId: "222bbb",
+        description: "feat/ui",
+        parentBookmarkName: "feat/base"
+      }
+    ];
+
+    const ordered = orderStackNodes(allNodes, [allNodes[0]!]);
+
+    expect(ordered.map((node) => node.name)).toEqual(["feat/base", "feat/ui"]);
+  });
+
+  it("preserves the full linear stack when already positioned at the tip", () => {
+    const allNodes = [
+      {
+        name: "feat/base",
+        changeId: "aaa111",
+        commitId: "111aaa",
+        description: "feat/base",
+        parentBookmarkName: undefined
+      },
+      {
+        name: "feat/ui",
+        changeId: "bbb222",
+        commitId: "222bbb",
+        description: "feat/ui",
+        parentBookmarkName: "feat/base"
+      }
+    ];
+
+    const ordered = orderStackNodes(allNodes, allNodes);
+
+    expect(ordered.map((node) => node.name)).toEqual(["feat/base", "feat/ui"]);
+  });
+
+  it("stops extending when the child chain is ambiguous", () => {
+    const allNodes = [
+      {
+        name: "feat/base",
+        changeId: "aaa111",
+        commitId: "111aaa",
+        description: "feat/base",
+        parentBookmarkName: undefined
+      },
+      {
+        name: "feat/ui",
+        changeId: "bbb222",
+        commitId: "222bbb",
+        description: "feat/ui",
+        parentBookmarkName: "feat/base"
+      },
+      {
+        name: "feat/alt",
+        changeId: "ccc333",
+        commitId: "333ccc",
+        description: "feat/alt",
+        parentBookmarkName: "feat/base"
+      }
+    ];
+
+    const ordered = orderStackNodes(allNodes, [allNodes[0]!]);
+
+    expect(ordered.map((node) => node.name)).toEqual(["feat/base"]);
   });
 });
 
