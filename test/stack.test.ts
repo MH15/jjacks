@@ -104,10 +104,12 @@ const makeLayer = (options?: {
         describedBookmarks.push(bookmarkName);
       }),
     createBookmark: () => Effect.void,
+    refreshToRemoteBookmark: () => Effect.succeed(""),
     diffCurrentStack: () => Effect.succeed("")
   });
 
   const repoLayer = Layer.succeed(RepoService, {
+    fetchOrigin: Effect.void,
     getRepoInfo: Effect.succeed(repoInfo)
   });
 
@@ -243,10 +245,12 @@ describe("StackService with injected fakes", () => {
       getCurrentStack: Effect.succeed([]),
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
+      refreshToRemoteBookmark: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.die("diffCurrentStack should not be used in this test.")
     });
 
     const repoLayer = Layer.succeed(RepoService, {
+      fetchOrigin: Effect.void,
       getRepoInfo: Effect.succeed(repoInfo)
     });
 
@@ -370,10 +374,12 @@ describe("StackService with injected fakes", () => {
           );
         }),
       createBookmark: () => Effect.void,
+      refreshToRemoteBookmark: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.succeed("")
     });
 
     const repoLayer = Layer.succeed(RepoService, {
+      fetchOrigin: Effect.void,
       getRepoInfo: Effect.succeed(repoInfo)
     });
 
@@ -455,10 +461,12 @@ describe("StackService with injected fakes", () => {
       ] satisfies ReadonlyArray<StackEntry>),
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
+      refreshToRemoteBookmark: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.succeed("")
     });
 
     const repoLayer = Layer.succeed(RepoService, {
+      fetchOrigin: Effect.void,
       getRepoInfo: Effect.succeed(repoInfo)
     });
 
