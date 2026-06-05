@@ -168,14 +168,13 @@ const make = {
 
     const finalEntries = yield* getStatusEntries;
     const plan = buildSyncPlanFromStatus(finalEntries, repoInfo.defaultBranch ?? "main");
-    const stackComment = renderStackComment(finalEntries);
-
     yield* Effect.forEach(finalEntries, (entry) =>
       Effect.gen(function* () {
         const pullRequest = entry.pullRequest;
         if (pullRequest === null) {
           return;
         }
+        const stackComment = renderStackComment(finalEntries, pullRequest.number);
 
         const outcome = yield* Effect.either(
           Effect.gen(function* () {

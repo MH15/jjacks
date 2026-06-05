@@ -50,12 +50,26 @@ const renderStackNode = (entry: StackStatusEntry, isCurrent: boolean): string =>
   return `- ${isCurrent ? "**current** " : ""}[#${entry.pullRequest.number}](${entry.pullRequest.url}) \`${entry.entry.name}\``;
 };
 
-export const renderStackComment = (entries: ReadonlyArray<StackStatusEntry>): string =>
-  [
+export const renderStackComment = (
+  entries: ReadonlyArray<StackStatusEntry>,
+  currentPullRequestNumber?: number
+): string => {
+  const fallbackCurrentPullRequestNumber = entries[entries.length - 1]?.pullRequest?.number;
+  const highlightedPullRequestNumber = currentPullRequestNumber ?? fallbackCurrentPullRequestNumber;
+
+  return [
     STACK_COMMENT_MARKER,
     "Stack created by `jjacks`.",
     "",
-    ...entries.map((entry, index) => renderStackNode(entry, index === entries.length - 1))
+    ...entries.map((entry, index) =>
+      renderStackNode(
+        entry,
+        highlightedPullRequestNumber === undefined
+          ? index === entries.length - 1
+          : entry.pullRequest?.number !== undefined && entry.pullRequest.number === highlightedPullRequestNumber
+      )
+    )
   ].join("\n");
+};
 
 export const stackCommentMarker = STACK_COMMENT_MARKER;

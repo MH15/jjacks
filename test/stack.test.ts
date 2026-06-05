@@ -540,4 +540,42 @@ describe("renderStackComment", () => {
     expect(comment).toContain("[#12](https://github.com/MH15/jjacks/pull/12) `feat/base`");
     expect(comment).toContain("**current** `feat/ui` -> pending PR");
   });
+
+  it("highlights the targeted pull request instead of always using the stack tip", () => {
+    const comment = renderStackComment(
+      [
+        {
+          entry: stack[0]!,
+          pullRequest: {
+            number: 12,
+            url: "https://github.com/MH15/jjacks/pull/12",
+            title: "feat/base",
+            headRefName: "feat/base",
+            baseRefName: "main",
+            isDraft: false
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: false
+        },
+        {
+          entry: stack[1]!,
+          pullRequest: {
+            number: 13,
+            url: "https://github.com/MH15/jjacks/pull/13",
+            title: "feat/ui",
+            headRefName: "feat/ui",
+            baseRefName: "feat/base",
+            isDraft: false
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: false
+        }
+      ],
+      12
+    );
+
+    expect(comment).toContain("**current** [#12](https://github.com/MH15/jjacks/pull/12) `feat/base`");
+    expect(comment).toContain("[#13](https://github.com/MH15/jjacks/pull/13) `feat/ui`");
+    expect(comment).not.toContain("**current** [#13](https://github.com/MH15/jjacks/pull/13) `feat/ui`");
+  });
 });
