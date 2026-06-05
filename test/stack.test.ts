@@ -220,14 +220,14 @@ describe("StackService with injected fakes", () => {
       remoteBranchExists: true,
       needsBookmarkPush: false
     });
-    expect(plan.stack[0]?.actions).not.toContainEqual(expect.stringContaining('create PR titled "feat/base"'));
+    expect(plan.stack[0]?.actions).not.toContainEqual(expect.stringContaining("create PR"));
     expect(plan.stack[1]).toMatchObject({
       intendedBaseBranch: "feat/base",
       remoteBranchExists: false,
       needsBookmarkPush: true
     });
-    expect(plan.stack[1]?.actions).toContain('push bookmark with "jj git push --bookmark feat/ui" before opening or updating its PR');
-    expect(plan.stack[1]?.actions).toContain('create PR titled "feat/ui" with base feat/base');
+    expect(plan.stack[1]?.actions).toContain("push bookmark");
+    expect(plan.stack[1]?.actions).toContain("create PR with base feat/base");
   });
 
   it("returns repo-scoped status entries with PR lookup results", async () => {

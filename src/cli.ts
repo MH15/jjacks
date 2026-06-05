@@ -1,12 +1,12 @@
 import { Args, Command, Options } from "@effect/cli";
 import { NodeContext, NodeRuntime } from "@effect/platform-node";
 import { confirm } from "@inquirer/prompts";
+import chalk from "chalk";
 import { Console, Effect, Layer, Option } from "effect";
 
 import { resolveDiffFormat } from "./diff";
 import { CliError } from "./errors";
 import { renderRefreshSummary, resolveRefreshPlan } from "./refresh";
-import { renderStackComment } from "./stack";
 import { resolveSyncMode } from "./sync-mode";
 import { renderDoctor, renderExecuteSummary, renderStatus, renderSyncPreview } from "./text";
 import { GitServiceLive } from "./services/GitService";
@@ -171,8 +171,6 @@ const promptForSyncConfirmation = Effect.promise(() =>
   })
 );
 
-const cyan = (value: string): string => `\u001B[36m${value}\u001B[39m`;
-
 const syncStepTitles = {
   inspect: "Inspect stack",
   descriptions: "Fill blank descriptions",
@@ -212,6 +210,7 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
     const stackService = yield* StackService;
     const progress = yield* ProgressService;
     const mode = resolveSyncMode({ execute, dryRun });
+    const renderColored = mode === "confirm";
     const runExecute = Effect.gen(function* () {
       const labels = [
         syncStepTitles.inspect,
@@ -221,7 +220,7 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
         syncStepTitles.comments
       ] as const;
 
-      yield* progress.persistSuccess(`Apply this sync plan? ${cyan("Yes")}`);
+      yield* progress.persistSuccess(`Apply this sync plan? ${chalk.cyan("Yes")}`);
 
       const prepared = yield* runStep(
         progress,
@@ -235,7 +234,7 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
 
       if (prepared.entries.length === 0) {
         const result = yield* stackService.executeSync;
-        const preview = renderSyncPreview(result.plan, renderStackComment(result.statusEntries));
+        const preview = renderSyncPreview(result.plan, { color: renderColored });
         yield* Console.log(`${preview}\n\n${renderExecuteSummary(result)}`);
         return;
       }
@@ -306,7 +305,7 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
         plan: prs.plan,
         statusEntries: prs.entries
       };
-      const preview = renderSyncPreview(result.plan, renderStackComment(result.statusEntries));
+      const preview = renderSyncPreview(result.plan, { color: renderColored });
       yield* Console.log(`${preview}\n\n${renderExecuteSummary(result)}`);
     });
 
@@ -315,9 +314,8 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
       return;
     }
 
-    const status = yield* stackService.getStatus;
     const plan = yield* stackService.buildSyncPlan;
-    const preview = renderSyncPreview(plan, renderStackComment(status.entries));
+    const preview = renderSyncPreview(plan, { color: renderColored });
     yield* Console.log(preview);
 
     if (mode === "dry-run") {
