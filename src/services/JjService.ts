@@ -20,6 +20,17 @@ export class JjService extends Context.Tag("JjService")<
     }) => Effect.Effect<void, CliError, ProcessService>;
     readonly moveUp: Effect.Effect<string, CliError, ProcessService>;
     readonly moveDown: Effect.Effect<string, CliError, ProcessService>;
+    readonly syncBookmarkToRemote: (bookmarkName: string) => Effect.Effect<void, CliError, ProcessService>;
+    readonly startWorkingCopyOnBookmark: (options: {
+      readonly bookmarkName: string;
+      readonly message: string;
+    }) => Effect.Effect<string, CliError, ProcessService>;
+    readonly continueWorkingCopyOnStack: (options: {
+      readonly rootBookmarkName: string;
+      readonly tipBookmarkName: string;
+      readonly defaultBranch: string;
+      readonly message: string;
+    }) => Effect.Effect<string, CliError, ProcessService>;
     readonly refreshToRemoteBookmark: (options: {
       readonly bookmarkName: string;
       readonly message: string;
@@ -114,6 +125,49 @@ const make = {
     const summary = yield* process.run("jj", ["log", "-r", "@ | @-", "--no-graph"]);
     return summary.stdout;
   }),
+
+  syncBookmarkToRemote: (bookmarkName: string) =>
+    Effect.gen(function* () {
+      const process = yield* ProcessService;
+      yield* ensureAdvanceBookmarksEnabled;
+      yield* process.run("jj", ["bookmark", "set", bookmarkName, "-r", `${bookmarkName}@origin`]);
+    }),
+
+  startWorkingCopyOnBookmark: ({
+    bookmarkName,
+    message
+  }: {
+    readonly bookmarkName: string;
+    readonly message: string;
+  }) =>
+    Effect.gen(function* () {
+      const process = yield* ProcessService;
+      yield* ensureAdvanceBookmarksEnabled;
+      yield* process.run("jj", ["new", bookmarkName, "-m", message]);
+      yield* process.run("jj", ["rebase", "-s", "@", "-d", bookmarkName]);
+      const summary = yield* process.run("jj", ["log", "-r", "@ | @-", "--no-graph"]);
+      return summary.stdout;
+    }),
+
+  continueWorkingCopyOnStack: ({
+    rootBookmarkName,
+    tipBookmarkName,
+    defaultBranch,
+    message
+  }: {
+    readonly rootBookmarkName: string;
+    readonly tipBookmarkName: string;
+    readonly defaultBranch: string;
+    readonly message: string;
+  }) =>
+    Effect.gen(function* () {
+      const process = yield* ProcessService;
+      yield* ensureAdvanceBookmarksEnabled;
+      yield* process.run("jj", ["rebase", "-s", rootBookmarkName, "-d", defaultBranch]);
+      yield* process.run("jj", ["new", tipBookmarkName, "-m", message]);
+      const summary = yield* process.run("jj", ["log", "-r", "@ | @- | @--", "--no-graph"]);
+      return summary.stdout;
+    }),
 
   refreshToRemoteBookmark: ({
     bookmarkName,

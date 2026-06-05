@@ -106,6 +106,9 @@ const makeLayer = (options?: {
     createBookmark: () => Effect.void,
     moveUp: Effect.succeed(""),
     moveDown: Effect.succeed(""),
+    syncBookmarkToRemote: () => Effect.void,
+    startWorkingCopyOnBookmark: () => Effect.succeed(""),
+    continueWorkingCopyOnStack: () => Effect.succeed(""),
     refreshToRemoteBookmark: () => Effect.succeed(""),
     diffCurrentStack: () => Effect.succeed("")
   });
@@ -249,6 +252,9 @@ describe("StackService with injected fakes", () => {
       createBookmark: () => Effect.void,
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
+      syncBookmarkToRemote: () => Effect.void,
+      startWorkingCopyOnBookmark: () => Effect.succeed(""),
+      continueWorkingCopyOnStack: () => Effect.succeed(""),
       refreshToRemoteBookmark: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.die("diffCurrentStack should not be used in this test.")
     });
@@ -380,6 +386,9 @@ describe("StackService with injected fakes", () => {
       createBookmark: () => Effect.void,
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
+      syncBookmarkToRemote: () => Effect.void,
+      startWorkingCopyOnBookmark: () => Effect.succeed(""),
+      continueWorkingCopyOnStack: () => Effect.succeed(""),
       refreshToRemoteBookmark: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.succeed("")
     });
@@ -469,6 +478,9 @@ describe("StackService with injected fakes", () => {
       createBookmark: () => Effect.void,
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
+      syncBookmarkToRemote: () => Effect.void,
+      startWorkingCopyOnBookmark: () => Effect.succeed(""),
+      continueWorkingCopyOnStack: () => Effect.succeed(""),
       refreshToRemoteBookmark: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.succeed("")
     });
