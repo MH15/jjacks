@@ -8,7 +8,7 @@
     "jjacks": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsup src/cli.ts --format esm --platform node --clean --out-dir dist",
+    "build": "tsup --config tsup.config.ts && chmod +x dist/cli.js",
     "check": "tsc --noEmit -p tsconfig.json",
     "start": "node --enable-source-maps dist/cli.js",
     "test": "vitest run"
