@@ -1,23 +1,25 @@
 import { Context, Effect, Layer } from "effect";
 import ora, { type Ora } from "ora";
 
+export interface ProgressServiceApi {
+  readonly startChecklist: (options: {
+    readonly current: string;
+    readonly pending: ReadonlyArray<string>;
+  }) => Effect.Effect<void>;
+  readonly persistSuccess: (message: string) => Effect.Effect<void>;
+  readonly failCurrent: (message: string) => Effect.Effect<void>;
+  readonly clear: Effect.Effect<void>;
+}
+
 export class ProgressService extends Context.Tag("ProgressService")<
   ProgressService,
-  {
-    readonly startChecklist: (options: {
-      readonly current: string;
-      readonly pending: ReadonlyArray<string>;
-    }) => Effect.Effect<void>;
-    readonly persistSuccess: (message: string) => Effect.Effect<void>;
-    readonly failCurrent: (message: string) => Effect.Effect<void>;
-    readonly clear: Effect.Effect<void>;
-  }
+  ProgressServiceApi
 >() {}
 
 const renderChecklist = (current: string, pending: ReadonlyArray<string>): string =>
   [current, ...pending.map((label) => `- ${label}`)].join("\n");
 
-const make = {
+const make: ProgressServiceApi = {
   startChecklist: ({
     current,
     pending

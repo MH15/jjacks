@@ -12,7 +12,7 @@ import { renderDoctor, renderExecuteSummary, renderStatus, renderSyncPreview } f
 import { GitServiceLive } from "./services/GitService";
 import { GitHubServiceLive } from "./services/GitHubService";
 import { JjService, JjServiceLive } from "./services/JjService";
-import { ProgressService, ProgressServiceLive } from "./services/ProgressService";
+import { ProgressService, ProgressServiceLive, type ProgressServiceApi } from "./services/ProgressService";
 import { ProcessServiceLive } from "./services/ProcessService";
 import { RepoService, RepoServiceLive } from "./services/RepoService";
 import { StackService, StackServiceLive } from "./services/StackService";
@@ -183,6 +183,30 @@ const syncStepTitles = {
 
 const pendingLabels = (labels: ReadonlyArray<string>, startIndex: number): ReadonlyArray<string> => labels.slice(startIndex + 1);
 
+const runStep = <A, E extends CliError, R>(
+  progress: ProgressServiceApi,
+  options: {
+    readonly pending: ReadonlyArray<string>;
+    readonly start: string;
+    readonly done: (value: A) => string;
+    readonly fail?: (error: E) => string;
+  },
+  effect: Effect.Effect<A, E, R>
+): Effect.Effect<A, E, R> =>
+  Effect.gen(function* () {
+    yield* progress.startChecklist({
+      current: options.start,
+      pending: options.pending
+    });
+
+    const result = yield* effect.pipe(
+      Effect.tapError((error) => progress.failCurrent(options.fail?.(error) ?? `${options.start}: ${error.message}`))
+    );
+
+    yield* progress.persistSuccess(options.done(result));
+    return result;
+  });
+
 const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
   Effect.gen(function* () {
     const stackService = yield* StackService;
@@ -196,21 +220,17 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
         syncStepTitles.pullRequests,
         syncStepTitles.comments
       ] as const;
-      const startStep = (index: number, current: string) =>
-        progress.startChecklist({
-          current,
-          pending: pendingLabels(labels, index)
-        });
-      const failStep = (message: string) => progress.failCurrent(message);
 
       yield* progress.persistSuccess(`Apply this sync plan? ${cyan("Yes")}`);
 
-      yield* startStep(0, syncStepTitles.inspect);
-      const prepared = yield* stackService.prepareSync.pipe(
-        Effect.tapError((error) => failStep(`${syncStepTitles.inspect}: ${error.message}`))
-      );
-      yield* progress.persistSuccess(
-        `${syncStepTitles.inspect} (${prepared.entries.length} entr${prepared.entries.length === 1 ? "y" : "ies"})`
+      const prepared = yield* runStep(
+        progress,
+        {
+          start: syncStepTitles.inspect,
+          pending: pendingLabels(labels, 0),
+          done: ({ entries }) => `Inspect stack (${entries.length} entr${entries.length === 1 ? "y" : "ies"})`
+        },
+        stackService.prepareSync
       );
 
       if (prepared.entries.length === 0) {
@@ -220,44 +240,61 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
         return;
       }
 
-      yield* startStep(1, syncStepTitles.descriptions);
-      const descriptions = yield* stackService.ensureSyncDescriptions(prepared.entries).pipe(
-        Effect.tapError((error) => failStep(`${syncStepTitles.descriptions}: ${error.message}`))
-      );
-      yield* progress.persistSuccess(
-        descriptions.describedBookmarks.length === 0
-          ? `${syncStepTitles.descriptions} (none needed)`
-          : `${syncStepTitles.descriptions} (${descriptions.describedBookmarks.length})`
-      );
-
-      yield* startStep(2, syncStepTitles.pushes);
-      const pushes = yield* stackService.pushSyncBookmarks(descriptions.entries).pipe(
-        Effect.tapError((error) => failStep(`${syncStepTitles.pushes}: ${error.message}`))
-      );
-      yield* progress.persistSuccess(
-        pushes.pushedBookmarks.length === 0 ? `${syncStepTitles.pushes} (none needed)` : `${syncStepTitles.pushes} (${pushes.pushedBookmarks.length})`
+      const descriptions = yield* runStep(
+        progress,
+        {
+          start: syncStepTitles.descriptions,
+          pending: pendingLabels(labels, 1),
+          done: ({ describedBookmarks }) =>
+            describedBookmarks.length === 0
+              ? `${syncStepTitles.descriptions} (none needed)`
+              : `${syncStepTitles.descriptions} (${describedBookmarks.length})`
+        },
+        stackService.ensureSyncDescriptions(prepared.entries)
       );
 
-      yield* startStep(3, syncStepTitles.pullRequests);
-      const prs = yield* stackService.reconcileSyncPullRequests({
-        entries: pushes.entries,
-        defaultBranch: prepared.defaultBranch
-      }).pipe(Effect.tapError((error) => failStep(`${syncStepTitles.pullRequests}: ${error.message}`)));
-      const pullRequestChanges = prs.createdPullRequestBookmarks.length + prs.updatedPullRequestNumbers.length;
-      yield* progress.persistSuccess(
-        pullRequestChanges === 0
-          ? `${syncStepTitles.pullRequests} (no metadata changes)`
-          : `${syncStepTitles.pullRequests} (${pullRequestChanges})`
+      const pushes = yield* runStep(
+        progress,
+        {
+          start: syncStepTitles.pushes,
+          pending: pendingLabels(labels, 2),
+          done: ({ pushedBookmarks }) =>
+            pushedBookmarks.length === 0
+              ? `${syncStepTitles.pushes} (none needed)`
+              : `${syncStepTitles.pushes} (${pushedBookmarks.length})`
+        },
+        stackService.pushSyncBookmarks(descriptions.entries)
       );
 
-      yield* startStep(4, syncStepTitles.comments);
-      const comments = yield* stackService.syncStackComments(prs.entries).pipe(
-        Effect.tapError((error) => failStep(`${syncStepTitles.comments}: ${error.message}`))
+      const prs = yield* runStep(
+        progress,
+        {
+          start: syncStepTitles.pullRequests,
+          pending: pendingLabels(labels, 3),
+          done: ({ createdPullRequestBookmarks, updatedPullRequestNumbers }) => {
+            const pullRequestChanges = createdPullRequestBookmarks.length + updatedPullRequestNumbers.length;
+            return pullRequestChanges === 0
+              ? `${syncStepTitles.pullRequests} (no metadata changes)`
+              : `${syncStepTitles.pullRequests} (${pullRequestChanges})`;
+          }
+        },
+        stackService.reconcileSyncPullRequests({
+          entries: pushes.entries,
+          defaultBranch: prepared.defaultBranch
+        })
       );
-      yield* progress.persistSuccess(
-        comments.warnings.length === 0
-          ? `${syncStepTitles.comments} (${comments.updatedCommentPullRequestNumbers.length})`
-          : `${syncStepTitles.comments} (${comments.updatedCommentPullRequestNumbers.length}, ${comments.warnings.length} warnings)`
+
+      const comments = yield* runStep(
+        progress,
+        {
+          start: syncStepTitles.comments,
+          pending: pendingLabels(labels, 4),
+          done: ({ updatedCommentPullRequestNumbers, warnings }) =>
+            warnings.length === 0
+              ? `${syncStepTitles.comments} (${updatedCommentPullRequestNumbers.length})`
+              : `${syncStepTitles.comments} (${updatedCommentPullRequestNumbers.length}, ${warnings.length} warnings)`
+        },
+        stackService.syncStackComments(prs.entries)
       );
 
       const result = {
