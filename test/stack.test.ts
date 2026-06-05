@@ -3,7 +3,7 @@ import { Cause, Effect, Layer } from "effect";
 
 import type { PullRequestComment, RepoInfo, StackEntry } from "../src/domain";
 import { CliError } from "../src/errors";
-import { renderStackComment, stackCommentMarker } from "../src/stack";
+import { buildSyncPlanFromStatus, renderStackComment, stackCommentMarker } from "../src/stack";
 import { orderStackNodes } from "../src/services/JjService";
 import { GitService } from "../src/services/GitService";
 import { GitHubService } from "../src/services/GitHubService";
@@ -534,6 +534,63 @@ describe("StackService with injected fakes", () => {
         expect(failure.value.message).toContain("still not published on origin after push");
       }
     }
+  });
+});
+
+describe("buildSyncPlanFromStatus", () => {
+  it("retargets the surviving bottom PR to main after a merged lower layer disappears", () => {
+    const plan = buildSyncPlanFromStatus(
+      [
+        {
+          entry: {
+            name: "mh/inquirer",
+            changeId: "bbb222",
+            commitId: "222bbb",
+            description: "mh/inquirer",
+            parentBookmarkName: "mh/refrehs-fixes",
+            branchName: "mh/inquirer",
+            isCurrent: false
+          },
+          pullRequest: {
+            number: 17,
+            url: "https://github.com/MH15/jjacks/pull/17",
+            title: "mh/inquirer",
+            headRefName: "mh/inquirer",
+            baseRefName: "mh/refrehs-fixes",
+            isDraft: false
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: true
+        },
+        {
+          entry: {
+            name: "mh/ancestors",
+            changeId: "ccc333",
+            commitId: "333ccc",
+            description: "mh/ancestors",
+            parentBookmarkName: "mh/inquirer",
+            branchName: "mh/ancestors",
+            isCurrent: true
+          },
+          pullRequest: {
+            number: 18,
+            url: "https://github.com/MH15/jjacks/pull/18",
+            title: "mh/ancestors",
+            headRefName: "mh/ancestors",
+            baseRefName: "mh/inquirer",
+            isDraft: false
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: true
+        }
+      ],
+      "main"
+    );
+
+    expect(plan.stack[0]?.intendedBaseBranch).toBe("main");
+    expect(plan.stack[0]?.actions).toContain("retarget PR #17 base from mh/refrehs-fixes to main");
+    expect(plan.stack[1]?.intendedBaseBranch).toBe("mh/inquirer");
+    expect(plan.stack[1]?.actions).not.toContain(expect.stringContaining("retarget PR #18"));
   });
 });
 
