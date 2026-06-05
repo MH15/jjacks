@@ -7,6 +7,7 @@ import { Console, Effect, Layer, Option } from "effect";
 import { resolveDiffFormat } from "./diff";
 import { CliError } from "./errors";
 import { renderRefreshSummary, resolveRefreshPlan } from "./refresh";
+import { buildSyncPlanFromStatus } from "./stack";
 import { resolveSyncMode } from "./sync-mode";
 import { renderDoctor, renderExecuteSummary, renderStatus, renderSyncPreview } from "./text";
 import { GitServiceLive } from "./services/GitService";
@@ -232,7 +233,13 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
     const progress = yield* ProgressService;
     const mode = resolveSyncMode({ execute, dryRun });
     const renderColored = mode === "confirm";
-    const runExecute = Effect.gen(function* () {
+    const runExecute = (
+      preparedOverride?: {
+        readonly defaultBranch: string;
+        readonly entries: ReadonlyArray<import("./domain").StackStatusEntry>;
+      }
+    ) =>
+      Effect.gen(function* () {
       const labels = [
         syncStepTitles.inspect,
         syncStepTitles.descriptions,
@@ -243,15 +250,17 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
 
       yield* progress.persistSuccess(`Apply this sync plan? ${chalk.cyan("Yes")}`);
 
-      const prepared = yield* runStep(
-        progress,
-        {
-          start: syncStepTitles.inspect,
-          pending: pendingLabels(labels, 0),
-          done: ({ entries }) => `Inspect stack (${entries.length} entr${entries.length === 1 ? "y" : "ies"})`
-        },
-        stackService.prepareSync
-      );
+      const prepared =
+        preparedOverride ??
+        (yield* runStep(
+          progress,
+          {
+            start: syncStepTitles.inspect,
+            pending: pendingLabels(labels, 0),
+            done: ({ entries }) => `Inspect stack (${entries.length} entr${entries.length === 1 ? "y" : "ies"})`
+          },
+          stackService.prepareSync
+        ));
 
       if (prepared.entries.length === 0) {
         const result = yield* stackService.executeSync;
@@ -331,11 +340,12 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
     });
 
     if (mode === "execute") {
-      yield* runExecute;
+      yield* runExecute();
       return;
     }
 
-    const plan = yield* stackService.buildSyncPlan;
+    const prepared = yield* stackService.prepareSync;
+    const plan = buildSyncPlanFromStatus(prepared.entries, prepared.defaultBranch);
     const preview = renderSyncPreview(plan, { color: renderColored });
     yield* Console.log(preview);
 
@@ -349,7 +359,7 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
       return;
     }
 
-    yield* runExecute;
+    yield* runExecute(prepared);
   })
 ).pipe(
   Command.withDescription("Preview and sync the current bookmark stack to GitHub pull requests and stack comments.")

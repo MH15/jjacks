@@ -62,13 +62,19 @@ const ensureAdvanceBookmarksEnabled = Effect.gen(function* () {
 const deriveBranchName = (bookmarkName: string): string =>
   bookmarkName.replace(/[^A-Za-z0-9/_-]+/g, "-");
 
-const parseTemplateLine = (line: string): BookmarkNode | null => {
+const parseTemplateLine = (line: string): (BookmarkNode & { readonly isEmpty: boolean }) | null => {
   if (line.length === 0) {
     return null;
   }
 
-  const [name, changeId, commitId, description, parentBookmarkName] = line.split("\t");
-  if (name === undefined || changeId === undefined || commitId === undefined || description === undefined) {
+  const [name, changeId, commitId, description, empty, parentBookmarkName] = line.split("\t");
+  if (
+    name === undefined ||
+    changeId === undefined ||
+    commitId === undefined ||
+    description === undefined ||
+    empty === undefined
+  ) {
     return null;
   }
 
@@ -83,14 +89,17 @@ const parseTemplateLine = (line: string): BookmarkNode | null => {
     changeId,
     commitId,
     description,
-    parentBookmarkName: resolvedParentBookmarkName
+    parentBookmarkName: resolvedParentBookmarkName,
+    isEmpty: empty === "true"
   };
 };
 
 const stackTemplate =
   `bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ change_id.short() ++ "\t" ++ commit_id.short() ++ "\t" ++ ` +
-  `description.first_line() ++ "\t" ++ ` +
+  `description.first_line() ++ "\t" ++ empty ++ "\t" ++ ` +
   `parents.map(|p| p.bookmarks().map(|b| b.name()).join(",")).join("|") ++ "\n"`;
+
+type ParsedStackNode = NonNullable<ReturnType<typeof parseTemplateLine>>;
 
 const workingCopyStateTemplate = `bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ description.first_line() ++ "\n"`;
 
@@ -331,7 +340,7 @@ const make = {
       stdout
         .split("\n")
         .map((line) => parseTemplateLine(line))
-        .filter((node): node is BookmarkNode => node !== null)
+        .filter((node): node is ParsedStackNode => node !== null)
         .map((node) => node);
 
     const nodes = parseNodes(allBookmarks.stdout);

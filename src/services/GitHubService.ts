@@ -7,6 +7,9 @@ import { ProcessService } from "./ProcessService";
 export class GitHubService extends Context.Tag("GitHubService")<
   GitHubService,
   {
+    readonly findPullRequestsByHeads: (
+      branchNames: ReadonlyArray<string>
+    ) => Effect.Effect<ReadonlyMap<string, PullRequestSummary>, CliError, ProcessService>;
     readonly findPullRequestByHead: (
       branchName: string
     ) => Effect.Effect<PullRequestSummary | null, CliError, ProcessService>;
@@ -35,30 +38,38 @@ export class GitHubService extends Context.Tag("GitHubService")<
 >() {}
 
 const make = {
-  findPullRequestByHead: (branchName: string) =>
+  findPullRequestsByHeads: (branchNames: ReadonlyArray<string>) =>
     Effect.gen(function* () {
-      const process = yield* ProcessService;
-      const result = yield* process.run(
-        "gh",
-        [
-          "pr",
-          "list",
-          "--head",
-          branchName,
-          "--json",
-          "number,url,title,headRefName,baseRefName,isDraft",
-          "--limit",
-          "1"
-        ],
-        { allowNonZeroExit: true }
-      );
-
-      if (result.exitCode !== 0 || result.stdout.length === 0) {
-        return null;
+      if (branchNames.length === 0) {
+        return new Map();
       }
 
-      const parsed = JSON.parse(result.stdout) as Array<PullRequestSummary>;
-      return parsed[0] ?? null;
+      const process = yield* ProcessService;
+      const result = yield* process.run("gh", [
+        "pr",
+        "list",
+        "--state",
+        "open",
+        "--json",
+        "number,url,title,headRefName,baseRefName,isDraft",
+        "--limit",
+        "200"
+      ]);
+
+      const requestedBranches = new Set(branchNames);
+      const pullRequests = JSON.parse(result.stdout) as Array<PullRequestSummary>;
+
+      return new Map(
+        pullRequests
+          .filter((pullRequest) => requestedBranches.has(pullRequest.headRefName))
+          .map((pullRequest) => [pullRequest.headRefName, pullRequest] as const)
+      );
+    }),
+
+  findPullRequestByHead: (branchName: string) =>
+    Effect.gen(function* () {
+      const pullRequests = yield* make.findPullRequestsByHeads([branchName]);
+      return pullRequests.get(branchName) ?? null;
     }),
 
   createPullRequest: ({

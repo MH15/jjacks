@@ -122,6 +122,11 @@ const makeLayer = (options?: {
   });
 
   const githubLayer = Layer.succeed(GitHubService, {
+    findPullRequestsByHeads: (branchNames: ReadonlyArray<string>) =>
+      Effect.succeed(new Map(branchNames.flatMap((branchName) => {
+        const pullRequest = pullRequests.get(branchName);
+        return pullRequest === undefined ? [] : [[branchName, pullRequest] as const];
+      }))),
     findPullRequestByHead: (branchName: string) => Effect.succeed(pullRequests.get(branchName) ?? null),
     createPullRequest: ({ headBranch, baseBranch, title }) =>
       Effect.sync(() => {
@@ -178,10 +183,25 @@ const makeLayer = (options?: {
   });
 
   const gitLayer = Layer.succeed(GitService, {
+    getBookmarksRemoteState: (bookmarkNames: ReadonlyArray<string>) =>
+      Effect.succeed(new Map(bookmarkNames.map((bookmarkName) => [
+        bookmarkName,
+        {
+          remoteBranchExists: pushedBranches.has(bookmarkName),
+          needsBookmarkPush: !pushedBranches.has(bookmarkName)
+        }
+      ]))),
     getBookmarkRemoteState: (bookmarkName: string) =>
       Effect.succeed({
         remoteBranchExists: pushedBranches.has(bookmarkName),
         needsBookmarkPush: !pushedBranches.has(bookmarkName)
+      }),
+    pushBookmarks: (bookmarkNames: ReadonlyArray<string>) =>
+      Effect.sync(() => {
+        for (const bookmarkName of bookmarkNames) {
+          pushedBookmarks.push(bookmarkName);
+          pushedBranches.add(bookmarkName);
+        }
       }),
     pushBookmark: (bookmarkName: string) =>
       Effect.sync(() => {
@@ -268,6 +288,7 @@ describe("StackService with injected fakes", () => {
     });
 
     const githubLayer = Layer.succeed(GitHubService, {
+      findPullRequestsByHeads: () => Effect.die("findPullRequestsByHeads should not be used for an empty stack."),
       findPullRequestByHead: () => Effect.die("findPullRequestByHead should not be used for an empty stack."),
       createPullRequest: () => Effect.die("createPullRequest should not be used for an empty stack."),
       updatePullRequest: () => Effect.void,
@@ -277,7 +298,9 @@ describe("StackService with injected fakes", () => {
     });
 
     const gitLayer = Layer.succeed(GitService, {
+      getBookmarksRemoteState: () => Effect.die("getBookmarksRemoteState should not be used for an empty stack."),
       getBookmarkRemoteState: () => Effect.die("getBookmarkRemoteState should not be used for an empty stack."),
+      pushBookmarks: () => Effect.void,
       pushBookmark: () => Effect.void
     });
 
@@ -414,6 +437,11 @@ describe("StackService with injected fakes", () => {
       }
     >();
     const githubLayer = Layer.succeed(GitHubService, {
+      findPullRequestsByHeads: (branchNames: ReadonlyArray<string>) =>
+        Effect.succeed(new Map(branchNames.flatMap((branchName) => {
+          const pullRequest = pullRequests.get(branchName);
+          return pullRequest === undefined ? [] : [[branchName, pullRequest] as const];
+        }))),
       findPullRequestByHead: (branchName: string) => Effect.succeed(pullRequests.get(branchName) ?? null),
       createPullRequest: ({ headBranch, baseBranch, title }) =>
         Effect.sync(() => {
@@ -436,10 +464,22 @@ describe("StackService with injected fakes", () => {
 
     let pushed = false;
     const gitLayer = Layer.succeed(GitService, {
+      getBookmarksRemoteState: (bookmarkNames: ReadonlyArray<string>) =>
+        Effect.succeed(new Map(bookmarkNames.map((bookmarkName) => [
+          bookmarkName,
+          {
+            remoteBranchExists: pushed,
+            needsBookmarkPush: !pushed
+          }
+        ]))),
       getBookmarkRemoteState: () =>
         Effect.succeed({
           remoteBranchExists: pushed,
           needsBookmarkPush: !pushed
+        }),
+      pushBookmarks: () =>
+        Effect.sync(() => {
+          pushed = true;
         }),
       pushBookmark: () =>
         Effect.sync(() => {
@@ -496,6 +536,7 @@ describe("StackService with injected fakes", () => {
     });
 
     const githubLayer = Layer.succeed(GitHubService, {
+      findPullRequestsByHeads: () => Effect.succeed(new Map()),
       findPullRequestByHead: () => Effect.succeed(null),
       createPullRequest: () => Effect.die("createPullRequest should not run without a published remote branch."),
       updatePullRequest: () => Effect.void,
@@ -505,11 +546,20 @@ describe("StackService with injected fakes", () => {
     });
 
     const gitLayer = Layer.succeed(GitService, {
+      getBookmarksRemoteState: (bookmarkNames: ReadonlyArray<string>) =>
+        Effect.succeed(new Map(bookmarkNames.map((bookmarkName) => [
+          bookmarkName,
+          {
+            remoteBranchExists: false,
+            needsBookmarkPush: true
+          }
+        ]))),
       getBookmarkRemoteState: () =>
         Effect.succeed({
           remoteBranchExists: false,
           needsBookmarkPush: true
         }),
+      pushBookmarks: () => Effect.void,
       pushBookmark: () => Effect.void
     });
 
@@ -534,6 +584,116 @@ describe("StackService with injected fakes", () => {
         expect(failure.value.message).toContain("still not published on origin after push");
       }
     }
+  });
+
+  it("skips empty parent bookmarks without PRs and syncs their real children against the nearest syncable base", async () => {
+    const emptyParentStack: ReadonlyArray<StackEntry> = [
+      {
+        name: "mh/cleanup-refresh-message",
+        changeId: "aaa111",
+        commitId: "111aaa",
+        description: "mh/cleanup-refresh-message",
+        parentBookmarkName: undefined,
+        branchName: "mh/cleanup-refresh-message",
+        isCurrent: false,
+        isEmpty: true
+      },
+      {
+        name: "mh/optimize",
+        changeId: "bbb222",
+        commitId: "222bbb",
+        description: "mh/optimize",
+        parentBookmarkName: "mh/cleanup-refresh-message",
+        branchName: "mh/optimize",
+        isCurrent: true
+      }
+    ];
+
+    const pushedBranches = new Set<string>();
+    const createdPullRequests: Array<string> = [];
+    const jjLayer = Layer.succeed(JjService, {
+      ensureAdvanceBookmarksEnabled: Effect.void,
+      getCurrentStack: Effect.succeed(emptyParentStack),
+      ensureBookmarkDescription: () => Effect.void,
+      createBookmark: () => Effect.void,
+      moveUp: Effect.succeed(""),
+      moveDown: Effect.succeed(""),
+      syncBookmarkToRemote: () => Effect.void,
+      startWorkingCopyOnBookmark: () => Effect.succeed(""),
+      continueWorkingCopyOnStack: () => Effect.succeed(""),
+      refreshToRemoteBookmark: () => Effect.succeed(""),
+      diffCurrentStack: () => Effect.succeed("")
+    });
+
+    const repoLayer = Layer.succeed(RepoService, {
+      fetchOrigin: Effect.void,
+      getRepoInfo: Effect.succeed(repoInfo)
+    });
+
+    const githubLayer = Layer.succeed(GitHubService, {
+      findPullRequestsByHeads: () => Effect.succeed(new Map()),
+      findPullRequestByHead: () => Effect.succeed(null),
+      createPullRequest: ({ headBranch, baseBranch, title }) =>
+        Effect.sync(() => {
+          createdPullRequests.push(`${headBranch}:${baseBranch}:${title}`);
+          return {
+            number: 99,
+            url: "https://github.com/MH15/jjacks/pull/99",
+            title,
+            headRefName: headBranch,
+            baseRefName: baseBranch,
+            isDraft: false
+          };
+        }),
+      updatePullRequest: () => Effect.void,
+      listIssueComments: () => Effect.succeed([]),
+      createIssueComment: () => Effect.void,
+      updateIssueComment: () => Effect.void
+    });
+
+    const gitLayer = Layer.succeed(GitService, {
+      getBookmarksRemoteState: (bookmarkNames: ReadonlyArray<string>) =>
+        Effect.succeed(new Map(bookmarkNames.map((bookmarkName) => [
+          bookmarkName,
+          {
+            remoteBranchExists: pushedBranches.has(bookmarkName),
+            needsBookmarkPush: !pushedBranches.has(bookmarkName)
+          }
+        ]))),
+      getBookmarkRemoteState: (bookmarkName: string) =>
+        Effect.succeed({
+          remoteBranchExists: pushedBranches.has(bookmarkName),
+          needsBookmarkPush: !pushedBranches.has(bookmarkName)
+        }),
+      pushBookmarks: (bookmarkNames: ReadonlyArray<string>) =>
+        Effect.sync(() => {
+          for (const bookmarkName of bookmarkNames) {
+            pushedBranches.add(bookmarkName);
+          }
+        }),
+      pushBookmark: (bookmarkName: string) =>
+        Effect.sync(() => {
+          pushedBranches.add(bookmarkName);
+        })
+    });
+
+    const processLayer = Layer.succeed(ProcessService, {
+      run: () =>
+        Effect.die("ProcessService should not be used when fake JJ/GitHub/Repo services are provided.")
+    });
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const stackService = yield* StackService;
+        return yield* stackService.executeSync;
+      }).pipe(Effect.provide(Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive)))
+    );
+
+    expect(result.plan.stack[0]?.actions).toContain("empty change; skipping PR creation until it has commits");
+    expect(result.plan.stack[1]?.intendedBaseBranch).toBe("main");
+    expect(result.pushedBookmarks).toEqual(["mh/optimize"]);
+    expect(result.createdPullRequestBookmarks).toEqual(["mh/optimize"]);
+    expect(createdPullRequests).toEqual(["mh/optimize:main:mh/optimize"]);
   });
 });
 
