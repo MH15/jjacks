@@ -83,18 +83,35 @@ const make = {
   }) =>
     Effect.gen(function* () {
       const process = yield* ProcessService;
-      yield* process.run("gh", [
-        "pr",
-        "create",
-        "--head",
-        headBranch,
-        "--base",
-        baseBranch,
-        "--title",
-        title,
-        "--body",
-        ""
-      ]);
+      yield* process
+        .run("gh", [
+          "pr",
+          "create",
+          "--head",
+          headBranch,
+          "--base",
+          baseBranch,
+          "--title",
+          title,
+          "--body",
+          ""
+        ])
+        .pipe(
+          Effect.catchIf(
+            (error): error is CliError =>
+              error instanceof CliError && error.message.includes("No commits between"),
+            () =>
+              Effect.fail(
+                new CliError(
+                  [
+                    `GitHub refused to create a PR for ${headBranch} against ${baseBranch} because there are no commits between them.`,
+                    `This usually means your local stack still reflects an old base.`,
+                    `Run "jjacks refresh" and then sync again.`
+                  ].join("\n")
+                )
+              )
+          )
+        );
 
       const created = yield* make.findPullRequestByHead(headBranch);
       if (created === null) {
