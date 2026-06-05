@@ -302,9 +302,11 @@ const make = {
 
     const nodes = parseNodes(allBookmarks.stdout);
     const currentPathNodes = [...parseNodes(currentPath.stdout)].reverse();
+    const currentBookmarkName = currentPathNodes[currentPathNodes.length - 1]?.name;
     const ordered = orderStackNodes(nodes, currentPathNodes).map((node) => ({
       ...node,
-      branchName: deriveBranchName(node.name)
+      branchName: deriveBranchName(node.name),
+      isCurrent: node.name === currentBookmarkName
     }));
 
     return ordered;

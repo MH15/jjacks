@@ -8,6 +8,7 @@ export interface BookmarkNode {
 
 export interface StackEntry extends BookmarkNode {
   readonly branchName: string;
+  readonly isCurrent: boolean;
 }
 
 export interface PullRequestSummary {

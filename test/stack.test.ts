@@ -19,7 +19,8 @@ const stack: ReadonlyArray<StackEntry> = [
     commitId: "111aaa",
     description: "feat/base",
     parentBookmarkName: undefined,
-    branchName: "feat/base"
+    branchName: "feat/base",
+    isCurrent: false
   },
   {
     name: "feat/ui",
@@ -27,7 +28,8 @@ const stack: ReadonlyArray<StackEntry> = [
     commitId: "222bbb",
     description: "feat/ui",
     parentBookmarkName: "feat/base",
-    branchName: "feat/ui"
+    branchName: "feat/ui",
+    isCurrent: true
   }
 ];
 
@@ -370,7 +372,8 @@ describe("StackService with injected fakes", () => {
         commitId: "222bbb",
         description: "",
         parentBookmarkName: undefined,
-        branchName: "feat/ui"
+        branchName: "feat/ui",
+        isCurrent: true
       }
     ];
 
@@ -472,7 +475,8 @@ describe("StackService with injected fakes", () => {
           commitId: "222bbb",
           description: "feat/ui",
           parentBookmarkName: undefined,
-          branchName: "feat/ui"
+          branchName: "feat/ui",
+          isCurrent: true
         }
       ] satisfies ReadonlyArray<StackEntry>),
       ensureBookmarkDescription: () => Effect.void,
@@ -676,5 +680,69 @@ describe("renderStackComment", () => {
     expect(comment).toContain("**current** [#12](https://github.com/MH15/jjacks/pull/12) `feat/base`");
     expect(comment).toContain("[#13](https://github.com/MH15/jjacks/pull/13) `feat/ui`");
     expect(comment).not.toContain("**current** [#13](https://github.com/MH15/jjacks/pull/13) `feat/ui`");
+  });
+
+  it("uses the actual current bookmark for preview comments when positioned mid-stack", () => {
+    const comment = renderStackComment(
+      [
+        {
+          entry: {
+            ...stack[0]!,
+            isCurrent: false
+          },
+          pullRequest: {
+            number: 12,
+            url: "https://github.com/MH15/jjacks/pull/12",
+            title: "feat/base",
+            headRefName: "feat/base",
+            baseRefName: "main",
+            isDraft: false
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: false
+        },
+        {
+          entry: {
+            ...stack[1]!,
+            isCurrent: true
+          },
+          pullRequest: {
+            number: 13,
+            url: "https://github.com/MH15/jjacks/pull/13",
+            title: "feat/ui",
+            headRefName: "feat/ui",
+            baseRefName: "feat/base",
+            isDraft: false
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: false
+        },
+        {
+          entry: {
+            name: "feat/api",
+            changeId: "ccc333",
+            commitId: "333ccc",
+            description: "feat/api",
+            parentBookmarkName: "feat/ui",
+            branchName: "feat/api",
+            isCurrent: false
+          },
+          pullRequest: {
+            number: 14,
+            url: "https://github.com/MH15/jjacks/pull/14",
+            title: "feat/api",
+            headRefName: "feat/api",
+            baseRefName: "feat/ui",
+            isDraft: false
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: false
+        }
+      ]
+    );
+
+    expect(comment).toContain("[#12](https://github.com/MH15/jjacks/pull/12) `feat/base`");
+    expect(comment).toContain("**current** [#13](https://github.com/MH15/jjacks/pull/13) `feat/ui`");
+    expect(comment).not.toContain("**current** [#14](https://github.com/MH15/jjacks/pull/14) `feat/api`");
   });
 });

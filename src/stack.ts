@@ -56,6 +56,7 @@ export const renderStackComment = (
 ): string => {
   const fallbackCurrentPullRequestNumber = entries[entries.length - 1]?.pullRequest?.number;
   const highlightedPullRequestNumber = currentPullRequestNumber ?? fallbackCurrentPullRequestNumber;
+  const currentBookmarkName = entries.find((entry) => entry.entry.isCurrent)?.entry.name;
 
   return [
     STACK_COMMENT_MARKER,
@@ -64,8 +65,10 @@ export const renderStackComment = (
     ...entries.map((entry, index) =>
       renderStackNode(
         entry,
-        highlightedPullRequestNumber === undefined
-          ? index === entries.length - 1
+        currentPullRequestNumber === undefined
+          ? currentBookmarkName === undefined
+            ? index === entries.length - 1
+            : entry.entry.name === currentBookmarkName
           : entry.pullRequest?.number !== undefined && entry.pullRequest.number === highlightedPullRequestNumber
       )
     )
