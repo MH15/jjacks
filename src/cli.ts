@@ -63,7 +63,10 @@ const bookmarkName = Args.text({ name: "bookmark-name" });
 const create = Command.make("create", { bookmarkName }, ({ bookmarkName }) =>
   Effect.gen(function* () {
     const jjService = yield* JjService;
-    yield* jjService.createBookmark(bookmarkName);
+    yield* jjService.createBookmark({
+      bookmarkName,
+      message: bookmarkName
+    });
     yield* jjService.ensureBookmarkDescription(bookmarkName, bookmarkName);
     yield* Console.log(
       [
