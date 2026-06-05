@@ -87,13 +87,10 @@ describe("renderStatus", () => {
 });
 
 describe("renderExecuteSummary", () => {
-  it("describes branch pushes as PR content updates and distinguishes metadata updates", () => {
+  it("renders a compact counts summary", () => {
     const output = renderExecuteSummary(executeResult);
 
-    expect(output).toContain("pushed bookmarks (PR contents updated via branch push):");
-    expect(output).toContain("created pull requests:");
-    expect(output).toContain("no PR metadata updates were needed");
-    expect(output).toContain("updated stack comments:");
+    expect(output).toContain("1 push, 1 PR, 1 comment");
   });
 
   it("includes warnings when non-fatal sync steps fail", () => {
@@ -102,6 +99,7 @@ describe("renderExecuteSummary", () => {
       warnings: ["failed to sync stack comment for PR #12: API rate limit exceeded"]
     });
 
+    expect(output).toContain("1 push, 1 PR, 1 comment");
     expect(output).toContain("warnings:");
     expect(output).toContain("failed to sync stack comment for PR #12");
   });

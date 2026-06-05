@@ -81,28 +81,19 @@ export const renderSyncPreview = (plan: SyncPlan, options: RenderSyncPreviewOpti
     ? [formatSyncHeader(options.color ?? false), "no active bookmark stack", "next: jjacks create <bookmark-name>"].join("\n")
     : renderSyncPlan(plan, options);
 
+const formatSummaryCount = (count: number, singular: string, plural: string = `${singular}s`): string =>
+  count === 0 ? `no ${plural}` : `${count} ${count === 1 ? singular : plural}`;
+
 export const renderExecuteSummary = (result: ExecuteSyncResult): string => {
-  const pushedSummary =
-    result.pushedBookmarks.length === 0
-      ? "no bookmark pushes were needed; PR contents were already current"
-      : `pushed bookmarks (PR contents updated via branch push):\n${result.pushedBookmarks
-          .map((name) => `- ${name}`)
-          .join("\n")}`;
-  const createdSummary =
-    result.createdPullRequestBookmarks.length === 0
-      ? "no pull requests were created"
-      : `created pull requests:\n${result.createdPullRequestBookmarks.map((name) => `- ${name}`).join("\n")}`;
-  const updatedSummary =
-    result.updatedPullRequestNumbers.length === 0
-      ? "no PR metadata updates were needed"
-      : `updated PR metadata:\n${result.updatedPullRequestNumbers.map((number) => `- #${number}`).join("\n")}`;
-  const commentSummary =
-    result.updatedCommentPullRequestNumbers.length === 0
-      ? "no stack comments were updated"
-      : `updated stack comments:\n${result.updatedCommentPullRequestNumbers.map((number) => `- #${number}`).join("\n")}`;
+  const pullRequestChanges = result.createdPullRequestBookmarks.length + result.updatedPullRequestNumbers.length;
+  const summary = [
+    formatSummaryCount(result.pushedBookmarks.length, "push"),
+    formatSummaryCount(pullRequestChanges, "PR", "PRs"),
+    formatSummaryCount(result.updatedCommentPullRequestNumbers.length, "comment")
+  ].join(", ");
 
   const warningSummary =
     result.warnings.length === 0 ? undefined : `warnings:\n${result.warnings.map((warning) => `- ${warning}`).join("\n")}`;
 
-  return [pushedSummary, createdSummary, updatedSummary, commentSummary, warningSummary].filter(Boolean).join("\n");
+  return [summary, warningSummary].filter(Boolean).join("\n");
 };

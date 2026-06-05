@@ -82,21 +82,42 @@ const create = Command.make("create", { bookmarkName }, ({ bookmarkName }) =>
   })
 ).pipe(Command.withDescription("Open a new child jj change and bookmark it as the next stacked PR."));
 
+const runMoveCommand = <R>(
+  direction: "up" | "down",
+  move: Effect.Effect<string, CliError, R>
+) =>
+  Effect.gen(function* () {
+    const workingCopyLog = yield* move;
+    yield* Console.log([`jjacks ${direction}`, "", "current jj state", workingCopyLog].join("\n"));
+  });
+
 const up = Command.make("up", {}, () =>
   Effect.gen(function* () {
     const jjService = yield* JjService;
-    const workingCopyLog = yield* jjService.moveUp;
-    yield* Console.log(["jjacks up", "", "current jj state", workingCopyLog].join("\n"));
+    yield* runMoveCommand("up", jjService.moveUp);
   })
 ).pipe(Command.withDescription("Move up the current bookmark stack with `jj next`."));
+
+const u = Command.make("u", {}, () =>
+  Effect.gen(function* () {
+    const jjService = yield* JjService;
+    yield* runMoveCommand("up", jjService.moveUp);
+  })
+).pipe(Command.withDescription("Alias for `up`."));
 
 const down = Command.make("down", {}, () =>
   Effect.gen(function* () {
     const jjService = yield* JjService;
-    const workingCopyLog = yield* jjService.moveDown;
-    yield* Console.log(["jjacks down", "", "current jj state", workingCopyLog].join("\n"));
+    yield* runMoveCommand("down", jjService.moveDown);
   })
 ).pipe(Command.withDescription("Move down the current bookmark stack with `jj prev`."));
+
+const d = Command.make("d", {}, () =>
+  Effect.gen(function* () {
+    const jjService = yield* JjService;
+    yield* runMoveCommand("down", jjService.moveDown);
+  })
+).pipe(Command.withDescription("Alias for `down`."));
 
 const refresh = Command.make("refresh", {}, () =>
   Effect.gen(function* () {
@@ -336,7 +357,7 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
 
 const root = Command.make("jjacks", {}, () => Console.log("Use a subcommand."))
   .pipe(Command.withDescription("Sync the current jj bookmark stack to GitHub in a Graphite-like workflow."))
-  .pipe(Command.withSubcommands([doctor, status, create, up, down, refresh, diff, sync]));
+  .pipe(Command.withSubcommands([doctor, status, create, up, u, down, d, refresh, diff, sync]));
 
 const cli = Command.run(root, {
   name: "jjacks",
