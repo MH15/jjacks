@@ -78,6 +78,22 @@ const create = Command.make("create", { bookmarkName }, ({ bookmarkName }) =>
   })
 );
 
+const up = Command.make("up", {}, () =>
+  Effect.gen(function* () {
+    const jjService = yield* JjService;
+    const workingCopyLog = yield* jjService.moveUp;
+    yield* Console.log(["jjacks up", "", "current jj state", workingCopyLog].join("\n"));
+  })
+);
+
+const down = Command.make("down", {}, () =>
+  Effect.gen(function* () {
+    const jjService = yield* JjService;
+    const workingCopyLog = yield* jjService.moveDown;
+    yield* Console.log(["jjacks down", "", "current jj state", workingCopyLog].join("\n"));
+  })
+);
+
 const refresh = Command.make("refresh", {}, () =>
   Effect.gen(function* () {
     const repoService = yield* RepoService;
@@ -178,7 +194,7 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
 );
 
 const root = Command.make("jjacks", {}, () => Console.log("Use a subcommand."))
-  .pipe(Command.withSubcommands([doctor, status, create, refresh, diff, sync]));
+  .pipe(Command.withSubcommands([doctor, status, create, up, down, refresh, diff, sync]));
 
 const cli = Command.run(root, {
   name: "jjacks",
