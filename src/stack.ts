@@ -9,16 +9,13 @@ const buildPlanActions = (
   remoteBranchExists: boolean,
   needsBookmarkPush: boolean
 ): ReadonlyArray<string> => [
-  ...(entry.description.trim().length === 0 ? [`set the blank jj change description to "${entry.name}" before syncing`] : []),
-  ...(needsBookmarkPush ? [`push bookmark with "jj git push --bookmark ${entry.name}" before opening or updating its PR`] : []),
-  ...(pullRequest === null ? [`create PR titled "${entry.name}" with base ${intendedBaseBranch}`] : []),
-  ...(pullRequest !== null && pullRequest.title !== entry.name
-    ? [`rename PR #${pullRequest.number} from "${pullRequest.title}" to "${entry.name}"`]
-    : []),
+  ...(entry.description.trim().length === 0 ? [`set jj change description to "${entry.name}"`] : []),
+  ...(needsBookmarkPush ? ["push bookmark"] : []),
+  ...(pullRequest === null ? [`create PR with base ${intendedBaseBranch}`] : []),
+  ...(pullRequest !== null && pullRequest.title !== entry.name ? [`rename PR #${pullRequest.number} to "${entry.name}"`] : []),
   ...(pullRequest !== null && pullRequest.baseRefName !== intendedBaseBranch
     ? [`retarget PR #${pullRequest.number} base from ${pullRequest.baseRefName} to ${intendedBaseBranch}`]
-    : []),
-  "ensure stack-link comment is present and up to date"
+    : [])
 ];
 
 export const buildSyncPlanFromStatus = (

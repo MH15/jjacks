@@ -19,7 +19,7 @@ const plan: SyncPlan = {
       pullRequest: null,
       remoteBranchExists: false,
       needsBookmarkPush: true,
-      actions: ['create PR titled "feat/base" with base main']
+      actions: ["push bookmark", "create PR with base main"]
     }
   ]
 };
@@ -35,20 +35,44 @@ const executeResult: ExecuteSyncResult = {
 };
 
 describe("renderSyncPreview", () => {
-  it("includes both the plan and stack comment preview", () => {
-    const output = renderSyncPreview(plan, "<!-- jjacks:stack -->\n- pending");
+  it("renders each bookmark with only meaningful actions", () => {
+    const output = renderSyncPreview(plan);
 
     expect(output).toContain("jjacks sync plan");
-    expect(output).toContain("stack comment preview");
-    expect(output).toContain("<!-- jjacks:stack -->");
+    expect(output).toContain("feat/base");
+    expect(output).toContain("- push bookmark");
+    expect(output).toContain("- create PR with base main");
   });
 
   it("renders a friendly empty-state preview when there is no active stack", () => {
-    const output = renderSyncPreview({ stack: [] }, "");
+    const output = renderSyncPreview({ stack: [] });
 
     expect(output).toContain("no active bookmark stack");
     expect(output).toContain("jjacks create <bookmark-name>");
-    expect(output).not.toContain("stack comment preview");
+  });
+
+  it("shows no changes for unchanged bookmarks", () => {
+    const output = renderSyncPreview({
+      stack: [
+        {
+          ...plan.stack[0]!,
+          pullRequest: {
+            number: 12,
+            url: "https://github.com/MH15/jjacks/pull/12",
+            title: "feat/base",
+            headRefName: "feat/base",
+            baseRefName: "main",
+            isDraft: false
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: false,
+          actions: []
+        }
+      ]
+    });
+
+    expect(output).toContain("feat/base (PR #12)");
+    expect(output).toContain("- no changes");
   });
 });
 

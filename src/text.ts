@@ -1,3 +1,5 @@
+import chalk from "chalk";
+
 import type { ExecuteSyncResult, PullRequestSummary, StackStatusEntry, SyncPlan } from "./domain";
 
 const formatPr = (pr: PullRequestSummary | null): string =>
@@ -19,21 +21,65 @@ export const renderStatus = (repoRoot: string, entries: ReadonlyArray<StackStatu
         }))
   ].join("\n");
 
-export const renderSyncPlan = (plan: SyncPlan): string =>
-  [
-    "jjacks sync plan",
-    ...plan.stack.map(({ entry, intendedBaseBranch, pullRequest, remoteBranchExists, needsBookmarkPush, actions }) => {
-      const remote = !remoteBranchExists ? "not pushed" : needsBookmarkPush ? "needs push" : "pushed";
-      const summary = `- ${entry.name} -> ${entry.branchName} | base: ${intendedBaseBranch} | remote: ${remote} | pr: ${formatPr(pullRequest)}`;
-      const renderedActions = actions.length === 0 ? "  - no changes" : actions.map((action) => `  - ${action}`).join("\n");
-      return `${summary}\n${renderedActions}`;
+type RenderSyncPreviewOptions = {
+  readonly color?: boolean;
+};
+
+const formatSyncHeader = (color: boolean): string => (color ? chalk.bold("jjacks sync plan") : "jjacks sync plan");
+
+const formatBookmarkLine = (
+  entry: SyncPlan["stack"][number],
+  color: boolean
+): string => {
+  const name = color ? chalk.bold(entry.entry.name) : entry.entry.name;
+  if (entry.pullRequest === null) {
+    return name;
+  }
+
+  const prLabel = color ? chalk.cyan(`PR #${entry.pullRequest.number}`) : `PR #${entry.pullRequest.number}`;
+  return `${name} (${prLabel})`;
+};
+
+const formatAction = (action: string, color: boolean): string => {
+  if (!color) {
+    return `- ${action}`;
+  }
+
+  if (action.startsWith("push bookmark") || action.startsWith("create PR")) {
+    return chalk.green(`- ${action}`);
+  }
+
+  if (
+    action.startsWith("set jj change description") ||
+    action.startsWith("rename PR") ||
+    action.startsWith("retarget PR")
+  ) {
+    return chalk.yellow(`- ${action}`);
+  }
+
+  return `- ${action}`;
+};
+
+const formatNoChanges = (color: boolean): string => (color ? chalk.gray("- no changes") : "- no changes");
+
+export const renderSyncPlan = (plan: SyncPlan, options: RenderSyncPreviewOptions = {}): string => {
+  const color = options.color ?? false;
+
+  return [
+    formatSyncHeader(color),
+    ...plan.stack.flatMap((entry, index) => {
+      const renderedActions =
+        entry.actions.length === 0 ? [formatNoChanges(color)] : entry.actions.map((action) => formatAction(action, color));
+
+      return [...(index === 0 ? [] : [""]), formatBookmarkLine(entry, color), ...renderedActions];
     })
   ].join("\n");
+};
 
-export const renderSyncPreview = (plan: SyncPlan, stackComment: string): string =>
+export const renderSyncPreview = (plan: SyncPlan, options: RenderSyncPreviewOptions = {}): string =>
   plan.stack.length === 0
-    ? ["jjacks sync plan", "no active bookmark stack", "next: jjacks create <bookmark-name>"].join("\n")
-    : [renderSyncPlan(plan), "", "stack comment preview", stackComment].join("\n");
+    ? [formatSyncHeader(options.color ?? false), "no active bookmark stack", "next: jjacks create <bookmark-name>"].join("\n")
+    : renderSyncPlan(plan, options);
 
 export const renderExecuteSummary = (result: ExecuteSyncResult): string => {
   const pushedSummary =
