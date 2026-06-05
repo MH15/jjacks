@@ -5,7 +5,7 @@ import { createInterface } from "node:readline/promises";
 
 import { resolveDiffFormat } from "./diff";
 import { CliError } from "./errors";
-import { renderRefreshSummary } from "./refresh";
+import { renderRefreshSummary, resolveRefreshPlan } from "./refresh";
 import { renderStackComment } from "./stack";
 import { parseSyncConfirmation, resolveSyncMode } from "./sync-mode";
 import { renderDoctor, renderExecuteSummary, renderStatus, renderSyncPreview } from "./text";
@@ -98,14 +98,28 @@ const refresh = Command.make("refresh", {}, () =>
   Effect.gen(function* () {
     const repoService = yield* RepoService;
     const jjService = yield* JjService;
+    const stackService = yield* StackService;
     yield* repoService.fetchOrigin;
     const repoInfo = yield* repoService.getRepoInfo;
     const defaultBranch = repoInfo.defaultBranch ?? "main";
-    const workingCopyLog = yield* jjService.refreshToRemoteBookmark({
-      bookmarkName: defaultBranch,
-      message: "Start next change from main"
-    });
-    yield* Console.log(renderRefreshSummary(defaultBranch, workingCopyLog));
+    yield* jjService.syncBookmarkToRemote(defaultBranch);
+
+    const status = yield* stackService.getStatus;
+    const plan = resolveRefreshPlan(status.entries, defaultBranch);
+    const workingCopyLog =
+      plan.kind === "clean-trunk"
+        ? yield* jjService.startWorkingCopyOnBookmark({
+            bookmarkName: defaultBranch,
+            message: "Start next change from main"
+          })
+        : yield* jjService.continueWorkingCopyOnStack({
+            rootBookmarkName: plan.rootBookmarkName,
+            tipBookmarkName: plan.tipBookmarkName,
+            defaultBranch,
+            message: `Continue ${plan.tipBookmarkName}`
+          });
+
+    yield* Console.log(renderRefreshSummary(plan, workingCopyLog));
   })
 );
 
