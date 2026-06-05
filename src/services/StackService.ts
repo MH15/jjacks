@@ -25,6 +25,51 @@ export class StackService extends Context.Tag("StackService")<
       import("../errors").CliError,
       JjService | GitHubService | GitService | RepoService | ProcessService
     >;
+    readonly prepareSync: Effect.Effect<
+      {
+        readonly defaultBranch: string;
+        readonly entries: ReadonlyArray<StackStatusEntry>;
+      },
+      import("../errors").CliError,
+      JjService | GitHubService | GitService | RepoService | ProcessService
+    >;
+    readonly ensureSyncDescriptions: (entries: ReadonlyArray<StackStatusEntry>) => Effect.Effect<
+      {
+        readonly entries: ReadonlyArray<StackStatusEntry>;
+        readonly describedBookmarks: ReadonlyArray<string>;
+      },
+      import("../errors").CliError,
+      JjService | GitHubService | GitService | RepoService | ProcessService
+    >;
+    readonly pushSyncBookmarks: (entries: ReadonlyArray<StackStatusEntry>) => Effect.Effect<
+      {
+        readonly entries: ReadonlyArray<StackStatusEntry>;
+        readonly pushedBookmarks: ReadonlyArray<string>;
+      },
+      import("../errors").CliError,
+      JjService | GitHubService | GitService | RepoService | ProcessService
+    >;
+    readonly reconcileSyncPullRequests: (options: {
+      readonly entries: ReadonlyArray<StackStatusEntry>;
+      readonly defaultBranch: string;
+    }) => Effect.Effect<
+      {
+        readonly entries: ReadonlyArray<StackStatusEntry>;
+        readonly plan: SyncPlan;
+        readonly createdPullRequestBookmarks: ReadonlyArray<string>;
+        readonly updatedPullRequestNumbers: ReadonlyArray<number>;
+      },
+      import("../errors").CliError,
+      JjService | GitHubService | GitService | RepoService | ProcessService
+    >;
+    readonly syncStackComments: (entries: ReadonlyArray<StackStatusEntry>) => Effect.Effect<
+      {
+        readonly updatedCommentPullRequestNumbers: ReadonlyArray<number>;
+        readonly warnings: ReadonlyArray<string>;
+      },
+      import("../errors").CliError,
+      JjService | GitHubService | GitService | RepoService | ProcessService
+    >;
     readonly executeSync: Effect.Effect<
       ExecuteSyncResult,
       import("../errors").CliError,
@@ -54,45 +99,20 @@ const getStatusEntries = Effect.gen(function* () {
   );
 });
 
-const make = {
-  getStatus: Effect.gen(function* () {
-    const repo = yield* RepoService;
-    const repoInfo = yield* repo.getRepoInfo;
-    const entries = yield* getStatusEntries;
+const prepareSync = Effect.gen(function* () {
+  const repo = yield* RepoService;
+  const repoInfo = yield* repo.getRepoInfo;
+  const entries = yield* getStatusEntries;
 
-    return {
-      repoRoot: repoInfo.root,
-      entries
-    };
-  }),
+  return {
+    defaultBranch: repoInfo.defaultBranch ?? "main",
+    entries
+  };
+});
 
-  buildSyncPlan: Effect.gen(function* () {
-    const repo = yield* RepoService;
-    const repoInfo = yield* repo.getRepoInfo;
-    const entries = yield* getStatusEntries;
-
-    return buildSyncPlanFromStatus(entries, repoInfo.defaultBranch ?? "main") satisfies SyncPlan;
-  }),
-
-  executeSync: Effect.gen(function* () {
+const ensureSyncDescriptions = (entries: ReadonlyArray<StackStatusEntry>) =>
+  Effect.gen(function* () {
     const jj = yield* JjService;
-    const git = yield* GitService;
-    const gh = yield* GitHubService;
-    const repo = yield* RepoService;
-    const repoInfo = yield* repo.getRepoInfo;
-    const entries = yield* getStatusEntries;
-    if (entries.length === 0) {
-      return {
-        pushedBookmarks: [],
-        createdPullRequestBookmarks: [],
-        updatedPullRequestNumbers: [],
-        updatedCommentPullRequestNumbers: [],
-        warnings: [],
-        plan: buildSyncPlanFromStatus([], repoInfo.defaultBranch ?? "main"),
-        statusEntries: []
-      } satisfies ExecuteSyncResult;
-    }
-
     const blankDescriptions = entries
       .map((entry) => entry.entry)
       .filter((entry) => entry.description.trim().length === 0);
@@ -101,19 +121,39 @@ const make = {
       discard: true
     });
 
-    const describedEntries = blankDescriptions.length === 0 ? entries : yield* getStatusEntries;
-    const toPush = describedEntries.filter((entry) => entry.needsBookmarkPush).map((entry) => entry.entry.name);
+    return {
+      entries: blankDescriptions.length === 0 ? entries : yield* getStatusEntries,
+      describedBookmarks: blankDescriptions.map((entry) => entry.name)
+    };
+  });
+
+const pushSyncBookmarks = (entries: ReadonlyArray<StackStatusEntry>) =>
+  Effect.gen(function* () {
+    const git = yield* GitService;
+    const toPush = entries.filter((entry) => entry.needsBookmarkPush).map((entry) => entry.entry.name);
 
     yield* Effect.forEach(toPush, (bookmarkName) => git.pushBookmark(bookmarkName), {
       discard: true
     });
 
-    const refreshedEntries = yield* getStatusEntries;
-    const refreshedPlan = buildSyncPlanFromStatus(refreshedEntries, repoInfo.defaultBranch ?? "main");
+    return {
+      entries: toPush.length === 0 ? entries : yield* getStatusEntries,
+      pushedBookmarks: toPush
+    };
+  });
+
+const reconcileSyncPullRequests = ({
+  entries,
+  defaultBranch
+}: {
+  readonly entries: ReadonlyArray<StackStatusEntry>;
+  readonly defaultBranch: string;
+}) =>
+  Effect.gen(function* () {
+    const gh = yield* GitHubService;
+    const refreshedPlan = buildSyncPlanFromStatus(entries, defaultBranch);
     const createdPullRequestBookmarks: Array<string> = [];
     const updatedPullRequestNumbers: Array<number> = [];
-    const updatedCommentPullRequestNumbers: Array<number> = [];
-    const warnings: Array<string> = [];
 
     yield* Effect.forEach(refreshedPlan.stack, (planEntry) =>
       Effect.gen(function* () {
@@ -167,14 +207,28 @@ const make = {
     );
 
     const finalEntries = yield* getStatusEntries;
-    const plan = buildSyncPlanFromStatus(finalEntries, repoInfo.defaultBranch ?? "main");
-    yield* Effect.forEach(finalEntries, (entry) =>
+
+    return {
+      entries: finalEntries,
+      plan: buildSyncPlanFromStatus(finalEntries, defaultBranch),
+      createdPullRequestBookmarks,
+      updatedPullRequestNumbers
+    };
+  });
+
+const syncStackComments = (entries: ReadonlyArray<StackStatusEntry>) =>
+  Effect.gen(function* () {
+    const gh = yield* GitHubService;
+    const updatedCommentPullRequestNumbers: Array<number> = [];
+    const warnings: Array<string> = [];
+
+    yield* Effect.forEach(entries, (entry) =>
       Effect.gen(function* () {
         const pullRequest = entry.pullRequest;
         if (pullRequest === null) {
           return;
         }
-        const stackComment = renderStackComment(finalEntries, pullRequest.number);
+        const stackComment = renderStackComment(entries, pullRequest.number);
 
         const outcome = yield* Effect.either(
           Effect.gen(function* () {
@@ -208,15 +262,71 @@ const make = {
     );
 
     return {
-      pushedBookmarks: toPush,
-      createdPullRequestBookmarks,
-      updatedPullRequestNumbers,
       updatedCommentPullRequestNumbers,
-      warnings,
-      plan,
-      statusEntries: finalEntries
+      warnings
+    };
+  });
+
+const executeSync = Effect.gen(function* () {
+  const prepared = yield* prepareSync;
+  const entries = prepared.entries;
+  if (entries.length === 0) {
+    return {
+      pushedBookmarks: [],
+      createdPullRequestBookmarks: [],
+      updatedPullRequestNumbers: [],
+      updatedCommentPullRequestNumbers: [],
+      warnings: [],
+      plan: buildSyncPlanFromStatus([], prepared.defaultBranch),
+      statusEntries: []
     } satisfies ExecuteSyncResult;
-  })
+  }
+
+  const descriptions = yield* ensureSyncDescriptions(entries);
+  const pushes = yield* pushSyncBookmarks(descriptions.entries);
+  const prs = yield* reconcileSyncPullRequests({
+    entries: pushes.entries,
+    defaultBranch: prepared.defaultBranch
+  });
+  const comments = yield* syncStackComments(prs.entries);
+
+  return {
+    pushedBookmarks: pushes.pushedBookmarks,
+    createdPullRequestBookmarks: prs.createdPullRequestBookmarks,
+    updatedPullRequestNumbers: prs.updatedPullRequestNumbers,
+    updatedCommentPullRequestNumbers: comments.updatedCommentPullRequestNumbers,
+    warnings: comments.warnings,
+    plan: prs.plan,
+    statusEntries: prs.entries
+  } satisfies ExecuteSyncResult;
+});
+
+const make = {
+  getStatus: Effect.gen(function* () {
+    const repo = yield* RepoService;
+    const repoInfo = yield* repo.getRepoInfo;
+    const entries = yield* getStatusEntries;
+
+    return {
+      repoRoot: repoInfo.root,
+      entries
+    };
+  }),
+
+  buildSyncPlan: Effect.gen(function* () {
+    const repo = yield* RepoService;
+    const repoInfo = yield* repo.getRepoInfo;
+    const entries = yield* getStatusEntries;
+
+    return buildSyncPlanFromStatus(entries, repoInfo.defaultBranch ?? "main") satisfies SyncPlan;
+  }),
+
+  prepareSync,
+  ensureSyncDescriptions,
+  pushSyncBookmarks,
+  reconcileSyncPullRequests,
+  syncStackComments,
+  executeSync
 };
 
 export const StackServiceLive = Layer.effect(StackService, Effect.succeed(make));

@@ -20,7 +20,9 @@
     "@effect/cli": "^0.75.1",
     "@effect/platform-node": "^0.106.0",
     "@inquirer/prompts": "^8.5.2",
-    "effect": "^3.21.2"
+    "effect": "^3.21.2",
+    "listr2": "^10.2.1",
+    "ora": "^9.4.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.1",
