@@ -92,6 +92,24 @@ const stackTemplate =
   `description.first_line() ++ "\t" ++ ` +
   `parents.map(|p| p.bookmarks().map(|b| b.name()).join(",")).join("|") ++ "\n"`;
 
+const workingCopyStateTemplate = `bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ description.first_line() ++ "\n"`;
+
+const parseWorkingCopyStateLine = (line: string): { readonly bookmarks: ReadonlyArray<string>; readonly description: string } | null => {
+  if (line.length === 0) {
+    return null;
+  }
+
+  const [bookmarks, description] = line.split("\t");
+  if (bookmarks === undefined || description === undefined) {
+    return null;
+  }
+
+  return {
+    bookmarks: bookmarks.length === 0 ? [] : bookmarks.split(",").filter((bookmark) => bookmark.length > 0),
+    description
+  };
+};
+
 const orderStackNodes = (
   allNodes: ReadonlyArray<BookmarkNode>,
   currentPathNodes: ReadonlyArray<BookmarkNode>
@@ -213,7 +231,23 @@ const make = {
       const process = yield* ProcessService;
       yield* ensureAdvanceBookmarksEnabled;
       yield* process.run("jj", ["rebase", "-s", rootBookmarkName, "-d", defaultBranch]);
-      yield* process.run("jj", ["new", tipBookmarkName, "-m", message]);
+      const workingCopyState = yield* process.run("jj", ["log", "-r", "@ | @-", "-T", workingCopyStateTemplate, "--no-graph"]);
+      const [currentState, parentState] = workingCopyState.stdout
+        .split("\n")
+        .map((line) => parseWorkingCopyStateLine(line))
+        .filter((state): state is NonNullable<typeof state> => state !== null);
+
+      const alreadyContinuing =
+        currentState !== undefined &&
+        parentState !== undefined &&
+        currentState.bookmarks.length === 0 &&
+        currentState.description === message &&
+        parentState.bookmarks.includes(tipBookmarkName);
+
+      if (!alreadyContinuing) {
+        yield* process.run("jj", ["new", tipBookmarkName, "-m", message]);
+      }
+
       const summary = yield* process.run("jj", ["log", "-r", "@ | @- | @--", "--no-graph"]);
       return summary.stdout;
     }),

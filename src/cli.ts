@@ -144,7 +144,7 @@ const refresh = Command.make("refresh", {}, () =>
             message: `Continue ${plan.tipBookmarkName}`
           });
 
-    yield* Console.log(renderRefreshSummary(plan, workingCopyLog));
+    yield* Console.log(renderRefreshSummary(plan, workingCopyLog, { color: true }));
   })
 ).pipe(
   Command.withDescription("Refresh trunk, restack surviving bookmarks onto it, and continue the remaining stack.")

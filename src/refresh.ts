@@ -1,3 +1,5 @@
+import chalk from "chalk";
+
 import type { StackStatusEntry } from "./domain";
 
 export type RefreshPlan =
@@ -34,21 +36,33 @@ export const resolveRefreshPlan = (
   };
 };
 
-export const renderRefreshSummary = (plan: RefreshPlan, workingCopyLog: string): string =>
-  [
-    "jjacks refresh",
-    `- fetched origin`,
-    `- moved ${plan.defaultBranch} to ${plan.defaultBranch}@origin`,
+type RenderRefreshSummaryOptions = {
+  readonly color?: boolean;
+};
+
+const formatRefreshHeader = (color: boolean): string => (color ? chalk.bold("jjacks refresh") : "jjacks refresh");
+const formatBranch = (value: string, color: boolean): string => (color ? chalk.cyan(value) : value);
+const formatBookmark = (value: string, color: boolean): string => (color ? chalk.bold(value) : value);
+
+export const renderRefreshSummary = (
+  plan: RefreshPlan,
+  workingCopyLog: string,
+  options: RenderRefreshSummaryOptions = {}
+): string => {
+  const color = options.color ?? false;
+  const defaultBranch = formatBranch(plan.defaultBranch, color);
+
+  return [
+    formatRefreshHeader(color),
+    `- refreshed ${defaultBranch} from origin`,
     ...(plan.kind === "clean-trunk"
-      ? [
-          `- no remaining stack found; created a fresh working-copy change on ${plan.defaultBranch}`,
-          `- rebased @ onto ${plan.defaultBranch}`
-        ]
+      ? [`- no remaining stack; continuing from ${defaultBranch}`]
       : [
-          `- restacked remaining stack from ${plan.rootBookmarkName} onto ${plan.defaultBranch}`,
-          `- created a fresh working-copy change to continue ${plan.tipBookmarkName}`
+          `- restacked remaining stack onto ${defaultBranch}`,
+          `- continuing ${formatBookmark(plan.tipBookmarkName, color)}`
         ]),
     "",
-    "current jj state",
+    color ? chalk.dim("current jj state") : "current jj state",
     workingCopyLog
   ].join("\n");
+};
