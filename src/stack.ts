@@ -9,9 +9,10 @@ const buildPlanActions = (
   remoteBranchExists: boolean,
   needsBookmarkPush: boolean
 ): ReadonlyArray<string> => [
+  ...(entry.isEmpty === true && pullRequest === null ? ["empty change; skipping PR creation until it has commits"] : []),
   ...(entry.description.trim().length === 0 ? [`set jj change description to "${entry.name}"`] : []),
-  ...(needsBookmarkPush ? ["push bookmark"] : []),
-  ...(pullRequest === null ? [`create PR with base ${intendedBaseBranch}`] : []),
+  ...(needsBookmarkPush && !(entry.isEmpty === true && pullRequest === null) ? ["push bookmark"] : []),
+  ...(pullRequest === null && entry.isEmpty !== true ? [`create PR with base ${intendedBaseBranch}`] : []),
   ...(pullRequest !== null && pullRequest.title !== entry.name ? [`rename PR #${pullRequest.number} to "${entry.name}"`] : []),
   ...(pullRequest !== null && pullRequest.baseRefName !== intendedBaseBranch
     ? [`retarget PR #${pullRequest.number} base from ${pullRequest.baseRefName} to ${intendedBaseBranch}`]
@@ -23,7 +24,9 @@ export const buildSyncPlanFromStatus = (
   defaultBranch: string
 ): SyncPlan => ({
   stack: entries.map(({ entry, pullRequest }, index): SyncPlanEntry => {
-    const parent = entries[index - 1]?.entry;
+    const parent = [...entries.slice(0, index)]
+      .reverse()
+      .find((candidate) => !(candidate.entry.isEmpty === true && candidate.pullRequest === null))?.entry;
     const intendedBaseBranch = parent?.branchName ?? defaultBranch;
     const remoteBranchExists = entries[index]!.remoteBranchExists;
     const needsBookmarkPush = entries[index]!.needsBookmarkPush;

@@ -83,20 +83,31 @@ const getStatusEntries = Effect.gen(function* () {
   const gh = yield* GitHubService;
   const git = yield* GitService;
   const stack = yield* jj.getCurrentStack;
+  if (stack.length === 0) {
+    return [];
+  }
+  const bookmarkNames = stack.map((entry) => entry.name);
+  const branchNames = stack.map((entry) => entry.branchName);
 
-  return yield* Effect.forEach(stack, (entry) =>
-    Effect.all({
-      pullRequest: gh.findPullRequestByHead(entry.branchName),
-      remoteState: git.getBookmarkRemoteState(entry.name)
-    }).pipe(
-      Effect.map(({ pullRequest, remoteState }) => ({
-        entry,
-        pullRequest,
-        remoteBranchExists: remoteState.remoteBranchExists,
-        needsBookmarkPush: remoteState.needsBookmarkPush
-      }))
-    )
-  );
+  const [pullRequestsByHead, remoteStatesByBookmark] = yield* Effect.all([
+    gh.findPullRequestsByHeads(branchNames),
+    git.getBookmarksRemoteState(bookmarkNames)
+  ]);
+
+  return stack.map((entry) => {
+    const pullRequest = pullRequestsByHead.get(entry.branchName) ?? null;
+    const remoteState = remoteStatesByBookmark.get(entry.name) ?? {
+      remoteBranchExists: false,
+      needsBookmarkPush: true
+    };
+
+    return {
+      entry,
+      pullRequest,
+      remoteBranchExists: remoteState.remoteBranchExists,
+      needsBookmarkPush: remoteState.needsBookmarkPush
+    };
+  });
 });
 
 const prepareSync = Effect.gen(function* () {
@@ -118,7 +129,8 @@ const ensureSyncDescriptions = (entries: ReadonlyArray<StackStatusEntry>) =>
       .filter((entry) => entry.description.trim().length === 0);
 
     yield* Effect.forEach(blankDescriptions, (entry) => jj.ensureBookmarkDescription(entry.name, entry.name), {
-      discard: true
+      discard: true,
+      concurrency: 4
     });
 
     return {
@@ -130,11 +142,11 @@ const ensureSyncDescriptions = (entries: ReadonlyArray<StackStatusEntry>) =>
 const pushSyncBookmarks = (entries: ReadonlyArray<StackStatusEntry>) =>
   Effect.gen(function* () {
     const git = yield* GitService;
-    const toPush = entries.filter((entry) => entry.needsBookmarkPush).map((entry) => entry.entry.name);
+    const toPush = entries
+      .filter((entry) => entry.needsBookmarkPush && !(entry.entry.isEmpty === true && entry.pullRequest === null))
+      .map((entry) => entry.entry.name);
 
-    yield* Effect.forEach(toPush, (bookmarkName) => git.pushBookmark(bookmarkName), {
-      discard: true
-    });
+    yield* git.pushBookmarks(toPush);
 
     return {
       entries: toPush.length === 0 ? entries : yield* getStatusEntries,
@@ -157,6 +169,10 @@ const reconcileSyncPullRequests = ({
 
     yield* Effect.forEach(refreshedPlan.stack, (planEntry) =>
       Effect.gen(function* () {
+        if (planEntry.pullRequest === null && planEntry.entry.isEmpty === true) {
+          return;
+        }
+
         if (planEntry.pullRequest === null) {
           if (!planEntry.remoteBranchExists) {
             return yield* Effect.fail(
@@ -203,7 +219,7 @@ const reconcileSyncPullRequests = ({
         yield* gh.updatePullRequest(updateOptions);
         updatedPullRequestNumbers.push(planEntry.pullRequest.number);
       }),
-      { discard: true }
+      { discard: true, concurrency: 4 }
     );
 
     const finalEntries = yield* getStatusEntries;
@@ -258,7 +274,7 @@ const syncStackComments = (entries: ReadonlyArray<StackStatusEntry>) =>
           warnings.push(`failed to sync stack comment for PR #${pullRequest.number}: ${error.message}`);
         }
       }),
-      { discard: true }
+      { discard: true, concurrency: 4 }
     );
 
     return {
