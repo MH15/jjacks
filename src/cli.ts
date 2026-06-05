@@ -1,13 +1,13 @@
 import { Args, Command, Options } from "@effect/cli";
 import { NodeContext, NodeRuntime } from "@effect/platform-node";
+import { confirm } from "@inquirer/prompts";
 import { Console, Effect, Layer, Option } from "effect";
-import { createInterface } from "node:readline/promises";
 
 import { resolveDiffFormat } from "./diff";
 import { CliError } from "./errors";
 import { renderRefreshSummary, resolveRefreshPlan } from "./refresh";
 import { renderStackComment } from "./stack";
-import { parseSyncConfirmation, resolveSyncMode } from "./sync-mode";
+import { resolveSyncMode } from "./sync-mode";
 import { renderDoctor, renderExecuteSummary, renderStatus, renderSyncPreview } from "./text";
 import { GitServiceLive } from "./services/GitService";
 import { GitHubServiceLive } from "./services/GitHubService";
@@ -156,22 +156,12 @@ const dryRun = Options.boolean("dry-run").pipe(
   Options.withDescription("Print the sync plan without applying it.")
 );
 
-const promptForSyncConfirmation = Effect.gen(function* () {
-  while (true) {
-    const answer = yield* Effect.acquireUseRelease(
-      Effect.sync(() => createInterface({ input: process.stdin, output: process.stdout })),
-      (readline) => Effect.promise(() => readline.question("Apply this sync plan? [Y/n] ")),
-      (readline) => Effect.sync(() => readline.close())
-    );
-
-    const parsed = parseSyncConfirmation(answer);
-    if (parsed !== undefined) {
-      return parsed;
-    }
-
-    yield* Console.log('Please answer "y" or "n".');
-  }
-});
+const promptForSyncConfirmation = Effect.promise(() =>
+  confirm({
+    message: "Apply this sync plan?",
+    default: true
+  })
+);
 
 const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
   Effect.gen(function* () {
