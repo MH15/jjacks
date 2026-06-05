@@ -57,7 +57,8 @@ describe("resolveRefreshPlan", () => {
           commitId: "111aaa",
           description: "feat/base",
           parentBookmarkName: undefined,
-          branchName: "feat/base"
+          branchName: "feat/base",
+          isCurrent: false
         },
         pullRequest: {
           number: 12,
@@ -77,7 +78,8 @@ describe("resolveRefreshPlan", () => {
           commitId: "222bbb",
           description: "feat/ui",
           parentBookmarkName: "feat/base",
-          branchName: "feat/ui"
+          branchName: "feat/ui",
+          isCurrent: true
         },
         pullRequest: {
           number: 13,

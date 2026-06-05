@@ -11,7 +11,8 @@ const stack: ReadonlyArray<StackEntry> = [
     commitId: "111aaa",
     description: "feat/base",
     parentBookmarkName: undefined,
-    branchName: "feat/base"
+    branchName: "feat/base",
+    isCurrent: false
   },
   {
     name: "feat/ui",
@@ -19,7 +20,8 @@ const stack: ReadonlyArray<StackEntry> = [
     commitId: "222bbb",
     description: "feat/ui",
     parentBookmarkName: "feat/base",
-    branchName: "feat/ui"
+    branchName: "feat/ui",
+    isCurrent: true
   }
 ];
 

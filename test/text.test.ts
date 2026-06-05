@@ -12,7 +12,8 @@ const plan: SyncPlan = {
         commitId: "111aaa",
         description: "feat/base",
         parentBookmarkName: undefined,
-        branchName: "feat/base"
+        branchName: "feat/base",
+        isCurrent: true
       },
       intendedBaseBranch: "main",
       pullRequest: null,
