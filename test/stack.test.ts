@@ -102,6 +102,7 @@ const makeLayer = (options?: {
   const jjLayer = Layer.succeed(JjService, {
     ensureAdvanceBookmarksEnabled: Effect.void,
     getCurrentStack: Effect.succeed(stack),
+    getTrackedBookmarks: Effect.succeed(stack),
     ensureBookmarkDescription: (bookmarkName: string) =>
       Effect.sync(() => {
         describedBookmarks.push(bookmarkName);
@@ -271,6 +272,7 @@ describe("StackService with injected fakes", () => {
     const jjLayer = Layer.succeed(JjService, {
       ensureAdvanceBookmarksEnabled: Effect.void,
       getCurrentStack: Effect.succeed([]),
+      getTrackedBookmarks: Effect.succeed([]),
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
       moveUp: Effect.succeed(""),
@@ -403,6 +405,7 @@ describe("StackService with injected fakes", () => {
     const jjLayer = Layer.succeed(JjService, {
       ensureAdvanceBookmarksEnabled: Effect.void,
       getCurrentStack: Effect.sync(() => currentStack),
+      getTrackedBookmarks: Effect.sync(() => currentStack),
       ensureBookmarkDescription: (bookmarkName: string) =>
         Effect.sync(() => {
           describedBookmarks.push(bookmarkName);
@@ -519,6 +522,17 @@ describe("StackService with injected fakes", () => {
           isCurrent: true
         }
       ] satisfies ReadonlyArray<StackEntry>),
+      getTrackedBookmarks: Effect.succeed([
+        {
+          name: "feat/ui",
+          changeId: "bbb222",
+          commitId: "222bbb",
+          description: "feat/ui",
+          parentBookmarkName: undefined,
+          branchName: "feat/ui",
+          isCurrent: true
+        }
+      ] satisfies ReadonlyArray<StackEntry>),
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
       moveUp: Effect.succeed(""),
@@ -614,6 +628,7 @@ describe("StackService with injected fakes", () => {
     const jjLayer = Layer.succeed(JjService, {
       ensureAdvanceBookmarksEnabled: Effect.void,
       getCurrentStack: Effect.succeed(emptyParentStack),
+      getTrackedBookmarks: Effect.succeed(emptyParentStack),
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
       moveUp: Effect.succeed(""),
@@ -751,6 +766,81 @@ describe("buildSyncPlanFromStatus", () => {
     expect(plan.stack[0]?.actions).toContain("retarget PR #17 base from mh/refrehs-fixes to main");
     expect(plan.stack[1]?.intendedBaseBranch).toBe("mh/inquirer");
     expect(plan.stack[1]?.actions).not.toContain(expect.stringContaining("retarget PR #18"));
+  });
+
+  it("keeps sibling branches based on their shared bookmarked parent instead of chaining them together", () => {
+    const plan = buildSyncPlanFromStatus(
+      [
+        {
+          entry: {
+            name: "mh/base",
+            changeId: "aaa111",
+            commitId: "111aaa",
+            description: "mh/base",
+            parentBookmarkName: undefined,
+            branchName: "mh/base",
+            isCurrent: false
+          },
+          pullRequest: {
+            number: 28,
+            url: "https://github.com/MH15/jjacks/pull/28",
+            title: "mh/base",
+            headRefName: "mh/base",
+            baseRefName: "main",
+            isDraft: false
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: false
+        },
+        {
+          entry: {
+            name: "mh/alias",
+            changeId: "bbb222",
+            commitId: "222bbb",
+            description: "mh/alias",
+            parentBookmarkName: "mh/base",
+            branchName: "mh/alias",
+            isCurrent: false
+          },
+          pullRequest: {
+            number: 29,
+            url: "https://github.com/MH15/jjacks/pull/29",
+            title: "mh/alias",
+            headRefName: "mh/alias",
+            baseRefName: "mh/base",
+            isDraft: false
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: false
+        },
+        {
+          entry: {
+            name: "mh/timing",
+            changeId: "ccc333",
+            commitId: "333ccc",
+            description: "mh/timing",
+            parentBookmarkName: "mh/base",
+            branchName: "mh/timing",
+            isCurrent: true
+          },
+          pullRequest: {
+            number: 30,
+            url: "https://github.com/MH15/jjacks/pull/30",
+            title: "mh/timing",
+            headRefName: "mh/timing",
+            baseRefName: "mh/base",
+            isDraft: false
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: false
+        }
+      ],
+      "main"
+    );
+
+    expect(plan.stack[1]?.intendedBaseBranch).toBe("mh/base");
+    expect(plan.stack[2]?.intendedBaseBranch).toBe("mh/base");
+    expect(plan.stack[2]?.actions).not.toContain(expect.stringContaining("retarget PR #30 base from mh/base to mh/alias"));
   });
 });
 
@@ -961,5 +1051,77 @@ describe("renderStackComment", () => {
     expect(comment).toContain("[#12](https://github.com/MH15/jjacks/pull/12) `feat/base`");
     expect(comment).toContain("**current** [#13](https://github.com/MH15/jjacks/pull/13) `feat/ui`");
     expect(comment).not.toContain("**current** [#14](https://github.com/MH15/jjacks/pull/14) `feat/api`");
+  });
+
+  it("renders sibling branches as nested entries under their shared parent", () => {
+    const comment = renderStackComment([
+      {
+        entry: {
+          name: "mh/base",
+          changeId: "aaa111",
+          commitId: "111aaa",
+          description: "mh/base",
+          parentBookmarkName: undefined,
+          branchName: "mh/base",
+          isCurrent: false
+        },
+        pullRequest: {
+          number: 28,
+          url: "https://github.com/MH15/jjacks/pull/28",
+          title: "mh/base",
+          headRefName: "mh/base",
+          baseRefName: "main",
+          isDraft: false
+        },
+        remoteBranchExists: true,
+        needsBookmarkPush: false
+      },
+      {
+        entry: {
+          name: "mh/alias",
+          changeId: "bbb222",
+          commitId: "222bbb",
+          description: "mh/alias",
+          parentBookmarkName: "mh/base",
+          branchName: "mh/alias",
+          isCurrent: false
+        },
+        pullRequest: {
+          number: 29,
+          url: "https://github.com/MH15/jjacks/pull/29",
+          title: "mh/alias",
+          headRefName: "mh/alias",
+          baseRefName: "mh/base",
+          isDraft: false
+        },
+        remoteBranchExists: true,
+        needsBookmarkPush: false
+      },
+      {
+        entry: {
+          name: "mh/timing",
+          changeId: "ccc333",
+          commitId: "333ccc",
+          description: "mh/timing",
+          parentBookmarkName: "mh/base",
+          branchName: "mh/timing",
+          isCurrent: true
+        },
+        pullRequest: {
+          number: 30,
+          url: "https://github.com/MH15/jjacks/pull/30",
+          title: "mh/timing",
+          headRefName: "mh/timing",
+          baseRefName: "mh/base",
+          isDraft: false
+        },
+        remoteBranchExists: true,
+        needsBookmarkPush: false
+      }
+    ]);
+
+    expect(comment).toContain("[#28](https://github.com/MH15/jjacks/pull/28) `mh/base`");
+    expect(comment).toContain("  - [#29](https://github.com/MH15/jjacks/pull/29) `mh/alias`");
+    expect(comment).toContain("  - **current** [#30](https://github.com/MH15/jjacks/pull/30) `mh/timing`");
   });
 });

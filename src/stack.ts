@@ -22,32 +22,58 @@ const buildPlanActions = (
 export const buildSyncPlanFromStatus = (
   entries: ReadonlyArray<StackStatusEntry>,
   defaultBranch: string
-): SyncPlan => ({
-  stack: entries.map(({ entry, pullRequest }, index): SyncPlanEntry => {
-    const parent = [...entries.slice(0, index)]
-      .reverse()
-      .find((candidate) => !(candidate.entry.isEmpty === true && candidate.pullRequest === null))?.entry;
-    const intendedBaseBranch = parent?.branchName ?? defaultBranch;
-    const remoteBranchExists = entries[index]!.remoteBranchExists;
-    const needsBookmarkPush = entries[index]!.needsBookmarkPush;
+): SyncPlan => {
+  const entriesByName = new Map(entries.map((candidate) => [candidate.entry.name, candidate] as const));
 
-    return {
-      entry,
-      intendedBaseBranch,
-      pullRequest,
-      remoteBranchExists,
-      needsBookmarkPush,
-      actions: buildPlanActions(entry, pullRequest, intendedBaseBranch, remoteBranchExists, needsBookmarkPush)
-    };
-  })
-});
+  return {
+    stack: entries.map(({ entry, pullRequest, remoteBranchExists, needsBookmarkPush }): SyncPlanEntry => {
+      let parentEntry = entry.parentBookmarkName === undefined ? undefined : entriesByName.get(entry.parentBookmarkName);
 
-const renderStackNode = (entry: StackStatusEntry, isCurrent: boolean): string => {
-  if (entry.pullRequest === null) {
-    return `- ${isCurrent ? "**current** " : ""}\`${entry.entry.name}\` -> pending PR`;
+      while (parentEntry !== undefined && parentEntry.entry.isEmpty === true && parentEntry.pullRequest === null) {
+        parentEntry =
+          parentEntry.entry.parentBookmarkName === undefined
+            ? undefined
+            : entriesByName.get(parentEntry.entry.parentBookmarkName);
+      }
+
+      const intendedBaseBranch = parentEntry?.entry.branchName ?? defaultBranch;
+
+      return {
+        entry,
+        intendedBaseBranch,
+        pullRequest,
+        remoteBranchExists,
+        needsBookmarkPush,
+        actions: buildPlanActions(entry, pullRequest, intendedBaseBranch, remoteBranchExists, needsBookmarkPush)
+      };
+    })
+  };
+};
+
+const entryDepth = (entry: StackStatusEntry, entriesByName: ReadonlyMap<string, StackStatusEntry>): number => {
+  let depth = 0;
+  let parentName = entry.entry.parentBookmarkName;
+
+  while (parentName !== undefined) {
+    const parent = entriesByName.get(parentName);
+    if (parent === undefined) {
+      break;
+    }
+
+    depth += 1;
+    parentName = parent.entry.parentBookmarkName;
   }
 
-  return `- ${isCurrent ? "**current** " : ""}[#${entry.pullRequest.number}](${entry.pullRequest.url}) \`${entry.entry.name}\``;
+  return depth;
+};
+
+const renderStackNode = (entry: StackStatusEntry, isCurrent: boolean, depth: number): string => {
+  const indent = "  ".repeat(depth);
+  if (entry.pullRequest === null) {
+    return `${indent}- ${isCurrent ? "**current** " : ""}\`${entry.entry.name}\` -> pending PR`;
+  }
+
+  return `${indent}- ${isCurrent ? "**current** " : ""}[#${entry.pullRequest.number}](${entry.pullRequest.url}) \`${entry.entry.name}\``;
 };
 
 export const renderStackComment = (
@@ -57,6 +83,7 @@ export const renderStackComment = (
   const fallbackCurrentPullRequestNumber = entries[entries.length - 1]?.pullRequest?.number;
   const highlightedPullRequestNumber = currentPullRequestNumber ?? fallbackCurrentPullRequestNumber;
   const currentBookmarkName = entries.find((entry) => entry.entry.isCurrent)?.entry.name;
+  const entriesByName = new Map(entries.map((entry) => [entry.entry.name, entry] as const));
 
   return [
     STACK_COMMENT_MARKER,
@@ -69,7 +96,8 @@ export const renderStackComment = (
           ? currentBookmarkName === undefined
             ? index === entries.length - 1
             : entry.entry.name === currentBookmarkName
-          : entry.pullRequest?.number !== undefined && entry.pullRequest.number === highlightedPullRequestNumber
+          : entry.pullRequest?.number !== undefined && entry.pullRequest.number === highlightedPullRequestNumber,
+        entryDepth(entry, entriesByName)
       )
     )
   ].join("\n");
