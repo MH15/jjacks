@@ -1,17 +1,19 @@
 import { Args, Command, Options } from "@effect/cli";
 import { NodeContext, NodeRuntime } from "@effect/platform-node";
 import { Console, Effect, Layer, Option } from "effect";
+import { createInterface } from "node:readline/promises";
 
 import { resolveDiffFormat } from "./diff";
 import { CliError } from "./errors";
+import { renderRefreshSummary } from "./refresh";
 import { renderStackComment } from "./stack";
-import { resolveSyncMode } from "./sync-mode";
+import { parseSyncConfirmation, resolveSyncMode } from "./sync-mode";
 import { renderDoctor, renderExecuteSummary, renderStatus, renderSyncPreview } from "./text";
 import { GitServiceLive } from "./services/GitService";
 import { GitHubServiceLive } from "./services/GitHubService";
 import { JjService, JjServiceLive } from "./services/JjService";
 import { ProcessServiceLive } from "./services/ProcessService";
-import { RepoServiceLive } from "./services/RepoService";
+import { RepoService, RepoServiceLive } from "./services/RepoService";
 import { StackService, StackServiceLive } from "./services/StackService";
 
 const sharedLayer = Layer.mergeAll(
@@ -73,6 +75,21 @@ const create = Command.make("create", { bookmarkName }, ({ bookmarkName }) =>
   })
 );
 
+const refresh = Command.make("refresh", {}, () =>
+  Effect.gen(function* () {
+    const repoService = yield* RepoService;
+    const jjService = yield* JjService;
+    yield* repoService.fetchOrigin;
+    const repoInfo = yield* repoService.getRepoInfo;
+    const defaultBranch = repoInfo.defaultBranch ?? "main";
+    const workingCopyLog = yield* jjService.refreshToRemoteBookmark({
+      bookmarkName: defaultBranch,
+      message: "Start next change from main"
+    });
+    yield* Console.log(renderRefreshSummary(defaultBranch, workingCopyLog));
+  })
+);
+
 const against = Options.text("against").pipe(
   Options.optional,
   Options.withDescription("Show the diff against this revset instead of the parent bookmark.")
@@ -100,21 +117,41 @@ const diff = Command.make("diff", { against, summary, stat }, ({ against, summar
 );
 
 const execute = Options.boolean("execute").pipe(
-  Options.withDescription("Apply sync actions after planning. Without this flag, sync stays in dry-run mode.")
+  Options.withDescription("Apply sync actions immediately without an interactive confirmation prompt.")
 );
 const dryRun = Options.boolean("dry-run").pipe(
-  Options.withDescription("Print the sync plan explicitly. This is also the default when --execute is not passed.")
+  Options.withDescription("Print the sync plan without applying it.")
 );
+
+const promptForSyncConfirmation = Effect.gen(function* () {
+  while (true) {
+    const answer = yield* Effect.acquireUseRelease(
+      Effect.sync(() => createInterface({ input: process.stdin, output: process.stdout })),
+      (readline) => Effect.promise(() => readline.question("Apply this sync plan? [Y/n] ")),
+      (readline) => Effect.sync(() => readline.close())
+    );
+
+    const parsed = parseSyncConfirmation(answer);
+    if (parsed !== undefined) {
+      return parsed;
+    }
+
+    yield* Console.log('Please answer "y" or "n".');
+  }
+});
 
 const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
   Effect.gen(function* () {
     const stackService = yield* StackService;
     const mode = resolveSyncMode({ execute, dryRun });
-
-    if (mode === "execute") {
+    const runExecute = Effect.gen(function* () {
       const result = yield* stackService.executeSync;
       const preview = renderSyncPreview(result.plan, renderStackComment(result.statusEntries));
       yield* Console.log(`${preview}\n\n${renderExecuteSummary(result)}`);
+    });
+
+    if (mode === "execute") {
+      yield* runExecute;
       return;
     }
 
@@ -122,11 +159,23 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
     const plan = yield* stackService.buildSyncPlan;
     const preview = renderSyncPreview(plan, renderStackComment(status.entries));
     yield* Console.log(preview);
+
+    if (mode === "dry-run") {
+      return;
+    }
+
+    const confirmed = yield* promptForSyncConfirmation;
+    if (!confirmed) {
+      yield* Console.log("sync canceled");
+      return;
+    }
+
+    yield* runExecute;
   })
 );
 
 const root = Command.make("jjacks", {}, () => Console.log("Use a subcommand."))
-  .pipe(Command.withSubcommands([doctor, status, create, diff, sync]));
+  .pipe(Command.withSubcommands([doctor, status, create, refresh, diff, sync]));
 
 const cli = Command.run(root, {
   name: "jjacks",

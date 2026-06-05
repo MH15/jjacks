@@ -9,6 +9,7 @@ import { ProcessService } from "./ProcessService";
 export class RepoService extends Context.Tag("RepoService")<
   RepoService,
   {
+    readonly fetchOrigin: Effect.Effect<void, CliError, ProcessService>;
     readonly getRepoInfo: Effect.Effect<RepoInfo, CliError, ProcessService>;
   }
 >() {}
@@ -28,6 +29,11 @@ const parseRemote = (stdout: string): string | undefined => {
 };
 
 const make = {
+  fetchOrigin: Effect.gen(function* () {
+    const process = yield* ProcessService;
+    yield* process.run("git", ["fetch", "origin"]);
+  }),
+
   getRepoInfo: Effect.gen(function* () {
     const process = yield* ProcessService;
 
