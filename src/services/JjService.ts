@@ -36,6 +36,10 @@ export class JjService extends Context.Tag("JjService")<
       readonly bookmarkName: string;
       readonly message: string;
     }) => Effect.Effect<string, CliError, ProcessService>;
+    readonly logBookmarks: (options: {
+      readonly mode: "tree" | "active" | "bookmarks-only";
+      readonly noGraph: boolean;
+    }) => Effect.Effect<string, CliError, ProcessService>;
     readonly diffCurrentStack: (options: {
       readonly defaultBranch: string;
       readonly against?: string;
@@ -378,6 +382,33 @@ const make = {
       yield* process.run("jj", ["rebase", "-s", "@", "-d", bookmarkName]);
       const summary = yield* process.run("jj", ["log", "-r", "@ | @-", "--no-graph"]);
       return summary.stdout;
+    }),
+
+  logBookmarks: ({
+    mode,
+    noGraph
+  }: {
+    readonly mode: "tree" | "active" | "bookmarks-only";
+    readonly noGraph: boolean;
+  }) =>
+    Effect.gen(function* () {
+      const process = yield* ProcessService;
+      yield* ensureAdvanceBookmarksEnabled;
+
+      const revset =
+        mode === "active"
+          ? "trunk()..@"
+          : mode === "bookmarks-only"
+            ? "descendants(trunk()) & ::bookmarks() & ~trunk()"
+            : '(bookmarks() & descendants(main@origin) & ~main@origin) | main@origin';
+
+      const args = ["log", "-r", revset] as Array<string>;
+      if (noGraph) {
+        args.push("--no-graph");
+      }
+
+      const result = yield* process.run("jj", args);
+      return result.stdout;
     }),
 
   diffCurrentStack: ({

@@ -151,6 +151,32 @@ const refresh = Command.make("refresh", {}, () =>
   Command.withDescription("Refresh trunk, restack surviving bookmarks onto it, and continue the remaining stack.")
 );
 
+const active = Options.boolean("active").pipe(
+  Options.withDescription("Show only the current active lane from trunk to @.")
+);
+const bookmarksOnly = Options.boolean("bookmarks-only").pipe(
+  Options.withDescription("Show only bookmarked descendants above trunk.")
+);
+const noGraph = Options.boolean("no-graph").pipe(
+  Options.withDescription("Pass through to `jj log --no-graph`.")
+);
+
+const log = Command.make("log", { active, bookmarksOnly, noGraph }, ({ active, bookmarksOnly, noGraph }) =>
+  Effect.gen(function* () {
+    if (active && bookmarksOnly) {
+      return yield* Effect.fail(new CliError("Choose at most one log scope flag: --active or --bookmarks-only."));
+    }
+
+    const jjService = yield* JjService;
+    const output = yield* jjService.logBookmarks({
+      mode: active ? "active" : bookmarksOnly ? "bookmarks-only" : "tree",
+      noGraph
+    });
+
+    yield* Console.log(output);
+  })
+).pipe(Command.withDescription("Show the tracked jj work tree above trunk using the jjacks sync model."));
+
 const against = Options.text("against").pipe(
   Options.optional,
   Options.withDescription("Show the diff against this revset instead of the parent bookmark.")
@@ -367,7 +393,7 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
 
 const root = Command.make("jjacks", {}, () => Console.log("Use a subcommand."))
   .pipe(Command.withDescription("Sync the current jj bookmark stack to GitHub in a Graphite-like workflow."))
-  .pipe(Command.withSubcommands([doctor, status, create, up, u, down, d, refresh, diff, sync]));
+  .pipe(Command.withSubcommands([doctor, status, create, up, u, down, d, refresh, log, diff, sync]));
 
 const cli = Command.run(root, {
   name: "jjacks",
