@@ -14,10 +14,8 @@ describe("renderRefreshSummary", () => {
     );
 
     expect(output).toContain("jjacks refresh");
-    expect(output).toContain("fetched origin");
-    expect(output).toContain("moved main to main@origin");
-    expect(output).toContain("no remaining stack found; created a fresh working-copy change on main");
-    expect(output).toContain("rebased @ onto main");
+    expect(output).toContain("refreshed main from origin");
+    expect(output).toContain("no remaining stack; continuing from main");
     expect(output).toContain("current jj state");
   });
 
@@ -33,9 +31,9 @@ describe("renderRefreshSummary", () => {
     );
 
     expect(output).toContain("jjacks refresh");
-    expect(output).toContain("moved main to main@origin");
-    expect(output).toContain("restacked remaining stack from feat/base onto main");
-    expect(output).toContain("created a fresh working-copy change to continue feat/ui");
+    expect(output).toContain("refreshed main from origin");
+    expect(output).toContain("restacked remaining stack onto main");
+    expect(output).toContain("continuing feat/ui");
     expect(output).toContain("current jj state");
   });
 });
