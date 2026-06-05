@@ -48,7 +48,7 @@ const doctor = Command.make("doctor", {}, () =>
       ])
     );
   })
-);
+).pipe(Command.withDescription("Check repo state, required jj config, and current stack/PR wiring."));
 
 const status = Command.make("status", {}, () =>
   Effect.gen(function* () {
@@ -56,9 +56,11 @@ const status = Command.make("status", {}, () =>
     const result = yield* stackService.getStatus;
     yield* Console.log(renderStatus(result.repoRoot, result.entries));
   })
-);
+).pipe(Command.withDescription("Show the active bookmark stack, push state, and PR mapping."));
 
-const bookmarkName = Args.text({ name: "bookmark-name" });
+const bookmarkName = Args.text({ name: "bookmark-name" }).pipe(
+  Args.withDescription("Bookmark name to create for the new stacked change.")
+);
 
 const create = Command.make("create", { bookmarkName }, ({ bookmarkName }) =>
   Effect.gen(function* () {
@@ -76,7 +78,7 @@ const create = Command.make("create", { bookmarkName }, ({ bookmarkName }) =>
       ].join("\n")
     );
   })
-);
+).pipe(Command.withDescription("Open a new child jj change and bookmark it as the next stacked PR."));
 
 const up = Command.make("up", {}, () =>
   Effect.gen(function* () {
@@ -84,7 +86,7 @@ const up = Command.make("up", {}, () =>
     const workingCopyLog = yield* jjService.moveUp;
     yield* Console.log(["jjacks up", "", "current jj state", workingCopyLog].join("\n"));
   })
-);
+).pipe(Command.withDescription("Move up the current bookmark stack with `jj next`."));
 
 const down = Command.make("down", {}, () =>
   Effect.gen(function* () {
@@ -92,7 +94,7 @@ const down = Command.make("down", {}, () =>
     const workingCopyLog = yield* jjService.moveDown;
     yield* Console.log(["jjacks down", "", "current jj state", workingCopyLog].join("\n"));
   })
-);
+).pipe(Command.withDescription("Move down the current bookmark stack with `jj prev`."));
 
 const refresh = Command.make("refresh", {}, () =>
   Effect.gen(function* () {
@@ -121,6 +123,8 @@ const refresh = Command.make("refresh", {}, () =>
 
     yield* Console.log(renderRefreshSummary(plan, workingCopyLog));
   })
+).pipe(
+  Command.withDescription("Refresh trunk, restack surviving bookmarks onto it, and continue the remaining stack.")
 );
 
 const against = Options.text("against").pipe(
@@ -147,7 +151,7 @@ const diff = Command.make("diff", { against, summary, stat }, ({ against, summar
 
     yield* Console.log(output);
   })
-);
+).pipe(Command.withDescription("Diff the current stacked change against its parent bookmark or another revset."));
 
 const execute = Options.boolean("execute").pipe(
   Options.withDescription("Apply sync actions immediately without an interactive confirmation prompt.")
@@ -195,9 +199,12 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
 
     yield* runExecute;
   })
+).pipe(
+  Command.withDescription("Preview and sync the current bookmark stack to GitHub pull requests and stack comments.")
 );
 
 const root = Command.make("jjacks", {}, () => Console.log("Use a subcommand."))
+  .pipe(Command.withDescription("Sync the current jj bookmark stack to GitHub in a Graphite-like workflow."))
   .pipe(Command.withSubcommands([doctor, status, create, up, down, refresh, diff, sync]));
 
 const cli = Command.run(root, {
