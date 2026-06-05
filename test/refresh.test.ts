@@ -101,4 +101,58 @@ describe("resolveRefreshPlan", () => {
       tipBookmarkName: "feat/ui"
     });
   });
+
+  it("keeps the surviving middle-to-tip stack after the bottom layer is merged away", () => {
+    const entries: ReadonlyArray<StackStatusEntry> = [
+      {
+        entry: {
+          name: "mh/inquirer",
+          changeId: "bbb222",
+          commitId: "222bbb",
+          description: "mh/inquirer",
+          parentBookmarkName: "mh/refrehs-fixes",
+          branchName: "mh/inquirer",
+          isCurrent: false
+        },
+        pullRequest: {
+          number: 17,
+          url: "https://github.com/MH15/jjacks/pull/17",
+          title: "mh/inquirer",
+          headRefName: "mh/inquirer",
+          baseRefName: "mh/refrehs-fixes",
+          isDraft: false
+        },
+        remoteBranchExists: true,
+        needsBookmarkPush: true
+      },
+      {
+        entry: {
+          name: "mh/ancestors",
+          changeId: "ccc333",
+          commitId: "333ccc",
+          description: "mh/ancestors",
+          parentBookmarkName: "mh/inquirer",
+          branchName: "mh/ancestors",
+          isCurrent: true
+        },
+        pullRequest: {
+          number: 18,
+          url: "https://github.com/MH15/jjacks/pull/18",
+          title: "mh/ancestors",
+          headRefName: "mh/ancestors",
+          baseRefName: "mh/inquirer",
+          isDraft: false
+        },
+        remoteBranchExists: true,
+        needsBookmarkPush: true
+      }
+    ];
+
+    expect(resolveRefreshPlan(entries, "main")).toEqual({
+      kind: "continue-stack",
+      defaultBranch: "main",
+      rootBookmarkName: "mh/inquirer",
+      tipBookmarkName: "mh/ancestors"
+    });
+  });
 });
