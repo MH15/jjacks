@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Cause, Effect, Layer } from "effect";
 
-import type { PullRequestComment, RepoInfo, StackEntry } from "../src/domain";
+import type { RepoInfo, StackEntry } from "../src/domain";
 import { CliError } from "../src/errors";
 import { analyzeReviewStack, buildSyncPlanFromStatus, renderStackComment, stackCommentMarker, upsertStackCommentInBody } from "../src/stack";
 import { orderStackNodes, selectCurrentBookmarkTree } from "../src/services/JjService";
@@ -87,7 +87,7 @@ const makeLayer = (options?: {
   }
   const createdPullRequests: Array<string> = [];
   const updatedPullRequests: Array<number> = [];
-  const issueComments = new Map<number, Array<PullRequestComment>>([
+  const issueComments = new Map([
     [
       12,
       [
@@ -113,11 +113,13 @@ const makeLayer = (options?: {
         describedBookmarks.push(bookmarkName);
       }),
     createBookmark: () => Effect.void,
+    moveToBookmark: () => Effect.succeed(""),
     moveUp: Effect.succeed(""),
     moveDown: Effect.succeed(""),
     syncBookmarkToRemote: () => Effect.void,
     editWorkingCopyOnStack: () => Effect.succeed(""),
     editWorkingCopyOnBookmark: () => Effect.succeed(""),
+    logBookmarks: () => Effect.succeed(""),
     diffCurrentStack: () => Effect.succeed("")
   });
 
@@ -283,11 +285,13 @@ describe("StackService with injected fakes", () => {
       getTrackedBookmarks: Effect.succeed([]),
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
+      moveToBookmark: () => Effect.succeed(""),
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
       editWorkingCopyOnStack: () => Effect.succeed(""),
       editWorkingCopyOnBookmark: () => Effect.succeed(""),
+      logBookmarks: () => Effect.die("logBookmarks should not be used in this test."),
       diffCurrentStack: () => Effect.die("diffCurrentStack should not be used in this test.")
     });
 
@@ -368,11 +372,13 @@ describe("StackService with injected fakes", () => {
       getTrackedBookmarks: Effect.succeed(trackedBookmarks),
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
+      moveToBookmark: () => Effect.succeed(""),
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
       editWorkingCopyOnStack: () => Effect.succeed(""),
       editWorkingCopyOnBookmark: () => Effect.succeed(""),
+      logBookmarks: () => Effect.die("logBookmarks should not be used in this test."),
       diffCurrentStack: () => Effect.die("diffCurrentStack should not be used in this test.")
     });
 
@@ -454,6 +460,7 @@ describe("StackService with injected fakes", () => {
       getTrackedBookmarks: Effect.succeed(currentStack),
       ensureBookmarkDescription: () => Effect.die("ensureBookmarkDescription should not run for a completed stack."),
       createBookmark: () => Effect.void,
+      moveToBookmark: () => Effect.succeed(""),
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
@@ -463,6 +470,7 @@ describe("StackService with injected fakes", () => {
           editedBookmarks.push(bookmarkName);
           return "";
         }),
+      logBookmarks: () => Effect.die("logBookmarks should not be used in this test."),
       diffCurrentStack: () => Effect.succeed("")
     });
 
@@ -512,11 +520,16 @@ describe("StackService with injected fakes", () => {
       pushBookmark: () => Effect.die("pushBookmark should not run for a completed stack.")
     });
 
+    const processLayer = Layer.succeed(ProcessService, {
+      run: () =>
+        Effect.die("ProcessService should not be used when fake JJ/GitHub/Repo services are provided.")
+    });
+
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const stackService = yield* StackService;
         return yield* stackService.executeSync;
-      }).pipe(Effect.provide(Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, StackServiceLive)))
+      }).pipe(Effect.provide(Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive)))
     );
 
     expect(editedBookmarks).toEqual(["main"]);
@@ -563,6 +576,7 @@ describe("StackService with injected fakes", () => {
       getTrackedBookmarks: Effect.succeed(currentStack),
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
+      moveToBookmark: () => Effect.succeed(""),
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
@@ -572,6 +586,7 @@ describe("StackService with injected fakes", () => {
           return "";
         }),
       editWorkingCopyOnBookmark: () => Effect.die("editWorkingCopyOnBookmark should not run with an active child."),
+      logBookmarks: () => Effect.die("logBookmarks should not be used in this test."),
       diffCurrentStack: () => Effect.succeed("")
     });
 
@@ -639,11 +654,16 @@ describe("StackService with injected fakes", () => {
       pushBookmark: () => Effect.void
     });
 
+    const processLayer = Layer.succeed(ProcessService, {
+      run: () =>
+        Effect.die("ProcessService should not be used when fake JJ/GitHub/Repo services are provided.")
+    });
+
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const stackService = yield* StackService;
         return yield* stackService.executeSync;
-      }).pipe(Effect.provide(Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, StackServiceLive)))
+      }).pipe(Effect.provide(Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive)))
     );
 
     expect(editStackCalls).toEqual([
@@ -732,13 +752,15 @@ describe("StackService with injected fakes", () => {
           currentStack = currentStack.map((entry) =>
             entry.name === bookmarkName ? { ...entry, description: bookmarkName } : entry
           );
-        }),
+      }),
       createBookmark: () => Effect.void,
+      moveToBookmark: () => Effect.succeed(""),
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
       editWorkingCopyOnStack: () => Effect.succeed(""),
       editWorkingCopyOnBookmark: () => Effect.succeed(""),
+      logBookmarks: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.succeed("")
     });
 
@@ -868,11 +890,13 @@ describe("StackService with injected fakes", () => {
       ] satisfies ReadonlyArray<StackEntry>),
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
+      moveToBookmark: () => Effect.succeed(""),
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
       editWorkingCopyOnStack: () => Effect.succeed(""),
       editWorkingCopyOnBookmark: () => Effect.succeed(""),
+      logBookmarks: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.succeed("")
     });
 
@@ -965,11 +989,13 @@ describe("StackService with injected fakes", () => {
       getTrackedBookmarks: Effect.succeed(emptyParentStack),
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
+      moveToBookmark: () => Effect.succeed(""),
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
       editWorkingCopyOnStack: () => Effect.succeed(""),
       editWorkingCopyOnBookmark: () => Effect.succeed(""),
+      logBookmarks: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.succeed("")
     });
 
