@@ -111,4 +111,4 @@ const spinner: Ora = ora({
   discardStdin: false
 });
 
-export const ProgressServiceLive = Layer.effect(ProgressService, Effect.succeed(make));
+export const ProgressServiceLive = Layer.succeed(ProgressService, make);

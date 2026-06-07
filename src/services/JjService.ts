@@ -673,5 +673,5 @@ const make = {
   })
 };
 
-export const JjServiceLive = Layer.effect(JjService, Effect.succeed(make));
+export const JjServiceLive = Layer.succeed(JjService, make);
 export { orderStackNodes };

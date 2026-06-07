@@ -128,4 +128,4 @@ const make = {
     })
 };
 
-export const GitServiceLive = Layer.effect(GitService, Effect.succeed(make));
+export const GitServiceLive = Layer.succeed(GitService, make);

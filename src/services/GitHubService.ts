@@ -224,4 +224,4 @@ const make = {
     })
 };
 
-export const GitHubServiceLive = Layer.effect(GitHubService, Effect.succeed(make));
+export const GitHubServiceLive = Layer.succeed(GitHubService, make);

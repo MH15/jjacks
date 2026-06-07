@@ -68,4 +68,4 @@ const make = {
   })
 };
 
-export const RepoServiceLive = Layer.effect(RepoService, Effect.succeed(make));
+export const RepoServiceLive = Layer.succeed(RepoService, make);
