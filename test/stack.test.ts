@@ -4,7 +4,7 @@ import { Cause, Effect, Layer } from "effect";
 import type { PullRequestComment, RepoInfo, StackEntry } from "../src/domain";
 import { CliError } from "../src/errors";
 import { buildSyncPlanFromStatus, renderStackComment, stackCommentMarker, upsertStackCommentInBody } from "../src/stack";
-import { orderStackNodes } from "../src/services/JjService";
+import { orderStackNodes, selectCurrentBookmarkTree } from "../src/services/JjService";
 import { GitService } from "../src/services/GitService";
 import { GitHubService } from "../src/services/GitHubService";
 import { JjService } from "../src/services/JjService";
@@ -106,6 +106,7 @@ const makeLayer = (options?: {
     ensureAdvanceBookmarksEnabled: Effect.void,
     getStackCommentLocation: Effect.succeed("comment" as const),
     getCurrentStack: Effect.succeed(stack),
+    getCurrentTree: Effect.succeed(stack),
     getTrackedBookmarks: Effect.succeed(stack),
     ensureBookmarkDescription: (bookmarkName: string) =>
       Effect.sync(() => {
@@ -279,6 +280,7 @@ describe("StackService with injected fakes", () => {
       ensureAdvanceBookmarksEnabled: Effect.void,
       getStackCommentLocation: Effect.succeed("comment" as const),
       getCurrentStack: Effect.succeed([]),
+      getCurrentTree: Effect.succeed([]),
       getTrackedBookmarks: Effect.succeed([]),
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
@@ -364,6 +366,7 @@ describe("StackService with injected fakes", () => {
       ensureAdvanceBookmarksEnabled: Effect.void,
       getStackCommentLocation: Effect.succeed("comment" as const),
       getCurrentStack: Effect.succeed([]),
+      getCurrentTree: Effect.succeed([]),
       getTrackedBookmarks: Effect.succeed(trackedBookmarks),
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
@@ -498,6 +501,7 @@ describe("StackService with injected fakes", () => {
       ensureAdvanceBookmarksEnabled: Effect.void,
       getStackCommentLocation: Effect.succeed("comment" as const),
       getCurrentStack: Effect.sync(() => currentStack),
+      getCurrentTree: Effect.sync(() => currentStack),
       getTrackedBookmarks: Effect.sync(() => currentStack),
       ensureBookmarkDescription: (bookmarkName: string) =>
         Effect.sync(() => {
@@ -618,6 +622,17 @@ describe("StackService with injected fakes", () => {
           isCurrent: true
         }
       ] satisfies ReadonlyArray<StackEntry>),
+      getCurrentTree: Effect.succeed([
+        {
+          name: "feat/ui",
+          changeId: "bbb222",
+          commitId: "222bbb",
+          description: "feat/ui",
+          parentBookmarkName: undefined,
+          branchName: "feat/ui",
+          isCurrent: true
+        }
+      ] satisfies ReadonlyArray<StackEntry>),
       getTrackedBookmarks: Effect.succeed([
         {
           name: "feat/ui",
@@ -725,6 +740,7 @@ describe("StackService with injected fakes", () => {
       ensureAdvanceBookmarksEnabled: Effect.void,
       getStackCommentLocation: Effect.succeed("comment" as const),
       getCurrentStack: Effect.succeed(emptyParentStack),
+      getCurrentTree: Effect.succeed(emptyParentStack),
       getTrackedBookmarks: Effect.succeed(emptyParentStack),
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
@@ -1022,6 +1038,53 @@ describe("orderStackNodes", () => {
     const ordered = orderStackNodes(allNodes, [allNodes[0]!]);
 
     expect(ordered.map((node) => node.name)).toEqual(["feat/base"]);
+  });
+});
+
+describe("selectCurrentBookmarkTree", () => {
+  it("includes sibling branches under the current tree root", () => {
+    const entries: ReadonlyArray<StackEntry> = [
+      {
+        name: "feat/base",
+        changeId: "aaa111",
+        commitId: "111aaa",
+        description: "feat/base",
+        parentBookmarkName: undefined,
+        branchName: "feat/base",
+        isCurrent: false
+      },
+      {
+        name: "feat/left",
+        changeId: "bbb222",
+        commitId: "222bbb",
+        description: "feat/left",
+        parentBookmarkName: "feat/base",
+        branchName: "feat/left",
+        isCurrent: false
+      },
+      {
+        name: "feat/right",
+        changeId: "ccc333",
+        commitId: "333ccc",
+        description: "feat/right",
+        parentBookmarkName: "feat/base",
+        branchName: "feat/right",
+        isCurrent: true
+      },
+      {
+        name: "other/root",
+        changeId: "ddd444",
+        commitId: "444ddd",
+        description: "other/root",
+        parentBookmarkName: undefined,
+        branchName: "other/root",
+        isCurrent: false
+      }
+    ];
+
+    const selected = selectCurrentBookmarkTree(entries, "feat/right");
+
+    expect(selected.map((entry) => entry.name)).toEqual(["feat/base", "feat/right", "feat/left"]);
   });
 });
 

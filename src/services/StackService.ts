@@ -82,7 +82,7 @@ const getCurrentStatusEntries = Effect.gen(function* () {
   const jj = yield* JjService;
   const gh = yield* GitHubService;
   const git = yield* GitService;
-  const stack = yield* jj.getCurrentStack;
+  const stack = yield* jj.getCurrentTree;
   if (stack.length === 0) {
     return [];
   }
