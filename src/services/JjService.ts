@@ -31,7 +31,7 @@ export class JjService extends Context.Tag("JjService")<
     }) => Effect.Effect<string, CliError, ProcessService>;
     readonly continueWorkingCopyOnStack: (options: {
       readonly rootBookmarkName: string;
-      readonly tipBookmarkName: string;
+      readonly currentBookmarkName: string;
       readonly defaultBranch: string;
       readonly message: string;
     }) => Effect.Effect<string, CliError, ProcessService>;
@@ -575,12 +575,12 @@ const make = {
 
   continueWorkingCopyOnStack: ({
     rootBookmarkName,
-    tipBookmarkName,
+    currentBookmarkName,
     defaultBranch,
     message
   }: {
     readonly rootBookmarkName: string;
-    readonly tipBookmarkName: string;
+    readonly currentBookmarkName: string;
     readonly defaultBranch: string;
     readonly message: string;
   }) =>
@@ -599,10 +599,10 @@ const make = {
         parentState !== undefined &&
         currentState.bookmarks.length === 0 &&
         currentState.description === message &&
-        parentState.bookmarks.includes(tipBookmarkName);
+        parentState.bookmarks.includes(currentBookmarkName);
 
       if (!alreadyContinuing) {
-        yield* process.run("jj", ["new", tipBookmarkName, "-m", message]);
+        yield* process.run("jj", ["new", currentBookmarkName, "-m", message]);
       }
 
       const summary = yield* process.run("jj", ["log", "-r", "@ | @- | @--", "--no-graph"]);

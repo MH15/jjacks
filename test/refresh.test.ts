@@ -25,7 +25,7 @@ describe("renderRefreshSummary", () => {
         kind: "continue-stack",
         defaultBranch: "main",
         rootBookmarkName: "feat/base",
-        tipBookmarkName: "feat/ui"
+        currentBookmarkName: "feat/ui"
       },
       "abcd1234 user@example.com 2026-06-04\nContinue feat/ui\nfeat/ui efgh5678 Existing stack tip"
     );
@@ -98,7 +98,7 @@ describe("resolveRefreshPlan", () => {
       kind: "continue-stack",
       defaultBranch: "main",
       rootBookmarkName: "feat/base",
-      tipBookmarkName: "feat/ui"
+      currentBookmarkName: "feat/ui"
     });
   });
 
@@ -154,7 +154,61 @@ describe("resolveRefreshPlan", () => {
       kind: "continue-stack",
       defaultBranch: "main",
       rootBookmarkName: "mh/inquirer",
-      tipBookmarkName: "mh/ancestors"
+      currentBookmarkName: "mh/ancestors"
+    });
+  });
+
+  it("continues from the current bookmark even when sibling children are present", () => {
+    const entries: ReadonlyArray<StackStatusEntry> = [
+      {
+        entry: {
+          name: "feat/base",
+          changeId: "aaa111",
+          commitId: "111aaa",
+          description: "feat/base",
+          parentBookmarkName: undefined,
+          branchName: "feat/base",
+          isCurrent: false
+        },
+        pullRequest: null,
+        remoteBranchExists: true,
+        needsBookmarkPush: false
+      },
+      {
+        entry: {
+          name: "feat/right",
+          changeId: "bbb222",
+          commitId: "222bbb",
+          description: "feat/right",
+          parentBookmarkName: "feat/base",
+          branchName: "feat/right",
+          isCurrent: true
+        },
+        pullRequest: null,
+        remoteBranchExists: true,
+        needsBookmarkPush: false
+      },
+      {
+        entry: {
+          name: "feat/left",
+          changeId: "ccc333",
+          commitId: "333ccc",
+          description: "feat/left",
+          parentBookmarkName: "feat/base",
+          branchName: "feat/left",
+          isCurrent: false
+        },
+        pullRequest: null,
+        remoteBranchExists: true,
+        needsBookmarkPush: false
+      }
+    ];
+
+    expect(resolveRefreshPlan(entries, "main")).toEqual({
+      kind: "continue-stack",
+      defaultBranch: "main",
+      rootBookmarkName: "feat/base",
+      currentBookmarkName: "feat/right"
     });
   });
 });

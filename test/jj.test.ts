@@ -54,7 +54,7 @@ describe("JjService.continueWorkingCopyOnStack", () => {
         const jjService = yield* JjService;
         return yield* jjService.continueWorkingCopyOnStack({
           rootBookmarkName: "feat/base",
-          tipBookmarkName: "feat/ui",
+          currentBookmarkName: "feat/ui",
           defaultBranch: "main",
           message: "Continue feat/ui"
         });
@@ -107,7 +107,7 @@ describe("JjService.continueWorkingCopyOnStack", () => {
         const jjService = yield* JjService;
         yield* jjService.continueWorkingCopyOnStack({
           rootBookmarkName: "feat/base",
-          tipBookmarkName: "feat/ui",
+          currentBookmarkName: "feat/ui",
           defaultBranch: "main",
           message: "Continue feat/ui"
         });
