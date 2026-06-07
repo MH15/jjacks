@@ -7,7 +7,7 @@ This tutorial is for the current shape of `jjacks`: a repo-local CLI that helps 
 - `main` is trunk.
 - You usually sit on an empty working copy on top of `main` or on top of the tip of a stack.
 - `jjacks create <bookmark>` turns the current working copy into the next named layer in the stack.
-- `jjacks sync` looks at the current active stack and reconciles GitHub to match it.
+- `jjacks sync` looks at the current active stack, refreshes it against trunk, and reconciles GitHub to match it.
 
 ## Example Stack Shape
 
@@ -102,7 +102,7 @@ graph LR
     pr4 -->|base| pr3
 ```
 
-That is the core idea behind `jjacks refresh`:
+That is the core idea behind `jjacks sync`:
 
 - merged lower layers disappear from the active stack
 - surviving child work is rebased onto fresh trunk
@@ -214,7 +214,7 @@ jjacks create feat/my-follow-up
 
 The intent is one bookmark per reviewable PR layer.
 
-### 4. Review the GitHub plan
+### 4. Review the sync plan
 
 Run:
 
@@ -224,7 +224,13 @@ jjacks sync
 
 Before applying changes, `jjacks` should show the plan and ask for confirmation.
 
-The preview should tell you, for each active stack entry:
+The preview should tell you:
+
+- which local refresh actions will run
+- which bookmarks will be rebased onto fresh trunk
+- which stack entries are blocked by local conflicts
+
+For each syncable active stack entry, it should also show:
 
 - whether the bookmark needs to be pushed
 - whether a PR will be created
@@ -254,12 +260,12 @@ They should follow the current bookmark lane rather than jumping around unrelate
 
 If a bookmark has multiple child bookmarks above it, `jjacks up` should prompt you to choose which child bookmark to continue from.
 
-## Refreshing After Lower PRs Merge
+## Syncing After Lower PRs Merge
 
 When lower layers merge and trunk moves:
 
 ```bash
-jjacks refresh
+jjacks sync
 ```
 
 The intended behavior is:
@@ -267,8 +273,12 @@ The intended behavior is:
 - fetch fresh trunk
 - restack any still-open work onto it
 - leave you on a continuation working copy ready to keep going
+- push and retarget any PRs whose local stack entries are clean
+- block any conflicted stack entry and all of its descendants from GitHub mutation
 
-If no stack remains, `refresh` should leave you on a clean working copy above `main`.
+If no stack remains, `sync` should refresh trunk and report that there is no active bookmark stack.
+
+If a stack entry conflicts during restack, that entry and its descendants should not be pushed, retargeted, created, or updated on GitHub. Clean sibling subtrees may still sync.
 
 ## Status Expectations
 

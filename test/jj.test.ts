@@ -244,9 +244,9 @@ describe("JjService.createBookmark", () => {
 
 describe("JjService.logBookmarks", () => {
   const descendantsStdout = [
-    "feat/base\taaa111\t111aaa\tfeat/base\tfalse\t",
-    "feat/right\tbbb222\t222bbb\tfeat/right\tfalse\taaa111",
-    "feat/left\tccc333\t333ccc\tfeat/left\tfalse\taaa111"
+    "feat/base\taaa111\t111aaa\tfeat/base\tfalse\tfalse\t",
+    "feat/right\tbbb222\t222bbb\tfeat/right\tfalse\tfalse\taaa111",
+    "feat/left\tccc333\t333ccc\tfeat/left\tfalse\tfalse\taaa111"
   ].join("\n");
 
   it("logs only the current tree by default", async () => {
@@ -265,7 +265,7 @@ describe("JjService.logBookmarks", () => {
 
       if (args[0] === "log" && args[1] === "-r" && args[2] === `::@ & ${trackedBookmarksRevsetForTest}`) {
         return {
-          stdout: "feat/right\tbbb222\t222bbb\tfeat/right\tfalse\taaa111",
+          stdout: "feat/right\tbbb222\t222bbb\tfeat/right\tfalse\tfalse\taaa111",
           stderr: "",
           exitCode: 0
         };
@@ -308,7 +308,7 @@ describe("JjService.logBookmarks", () => {
 
       if (args[0] === "log" && args[1] === "-r" && args[2] === `::@ & ${trackedBookmarksRevsetForTest}`) {
         return {
-          stdout: "feat/right\tbbb222\t222bbb\tfeat/right\tfalse\taaa111",
+          stdout: "feat/right\tbbb222\t222bbb\tfeat/right\tfalse\tfalse\taaa111",
           stderr: "",
           exitCode: 0
         };

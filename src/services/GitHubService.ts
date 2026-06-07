@@ -46,6 +46,13 @@ const decodeWithSchema = <A, I>(schema: Schema.Schema<A, I>, value: unknown, con
     )
   );
 
+const prStatePriority = (pullRequest: PullRequestSummaryType): number =>
+  pullRequest.state === "OPEN" || pullRequest.state === undefined
+    ? 0
+    : pullRequest.state === "MERGED"
+      ? 1
+      : 2;
+
 const make = {
   findPullRequestsByHeads: (branchNames: ReadonlyArray<string>) =>
     Effect.gen(function* () {
@@ -58,9 +65,9 @@ const make = {
         "pr",
         "list",
         "--state",
-        "open",
+        "all",
         "--json",
-        "number,url,title,headRefName,baseRefName,isDraft,body",
+        "number,url,title,headRefName,baseRefName,state,isDraft,body",
         "--limit",
         "200"
       ]);
@@ -72,11 +79,19 @@ const make = {
         "Failed to decode gh pr list output"
       );
 
-      return new Map(
-        pullRequests
-          .filter((pullRequest) => requestedBranches.has(pullRequest.headRefName))
-          .map((pullRequest) => [pullRequest.headRefName, pullRequest] as const)
-      );
+      const resultByHead = new Map<string, PullRequestSummaryType>();
+      for (const pullRequest of pullRequests) {
+        if (!requestedBranches.has(pullRequest.headRefName)) {
+          continue;
+        }
+
+        const existing = resultByHead.get(pullRequest.headRefName);
+        if (existing === undefined || prStatePriority(pullRequest) < prStatePriority(existing)) {
+          resultByHead.set(pullRequest.headRefName, pullRequest);
+        }
+      }
+
+      return resultByHead;
     }),
 
   findPullRequestByHead: (branchName: string) =>
@@ -121,7 +136,7 @@ const make = {
                   [
                     `GitHub refused to create a PR for ${headBranch} against ${baseBranch} because there are no commits between them.`,
                     `This usually means your local stack still reflects an old base.`,
-                    `Run "jjacks refresh" and then sync again.`
+                    `Run "jjacks sync" again after resolving any local restack issues.`
                   ].join("\n")
                 )
               )

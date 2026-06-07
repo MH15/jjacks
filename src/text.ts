@@ -14,10 +14,16 @@ export const renderStatus = (repoRoot: string, entries: ReadonlyArray<StackStatu
     `repo: ${repoRoot}`,
     ...(entries.length === 0
       ? ["no active bookmark stack", "next: jjacks create <bookmark-name>"]
-      : entries.map(({ entry, pullRequest, remoteBranchExists, needsBookmarkPush }) => {
+      : entries.map(({ entry, pullRequest, remoteBranchExists, needsBookmarkPush, blockedBy }) => {
           const parent = entry.parentBookmarkName ?? "<trunk>";
           const remote = !remoteBranchExists ? "not pushed" : needsBookmarkPush ? "needs push" : "pushed";
-          return `- ${entry.name} -> ${entry.branchName} | parent: ${parent} | remote: ${remote} | pr: ${formatPr(pullRequest)}`;
+          const blocked =
+            blockedBy === undefined
+              ? ""
+              : blockedBy === entry.name
+              ? " | blocked: local conflict"
+              : ` | blocked: conflict in ${blockedBy}`;
+          return `- ${entry.name} -> ${entry.branchName} | parent: ${parent} | remote: ${remote} | pr: ${formatPr(pullRequest)}${blocked}`;
         }))
   ].join("\n");
 
@@ -67,6 +73,10 @@ export const renderSyncPlan = (plan: SyncPlan, options: RenderSyncPreviewOptions
 
   return [
     formatSyncHeader(color),
+    ...(plan.localActions.length === 0
+      ? []
+      : ["", color ? chalk.cyan("local") : "local", ...plan.localActions.map((action) => formatAction(action, color))]),
+    ...(plan.stack.length === 0 ? [] : ["", color ? chalk.cyan("github") : "github"]),
     ...plan.stack.flatMap((entry, index) => {
       const renderedActions =
         entry.actions.length === 0 ? [formatNoChanges(color)] : entry.actions.map((action) => formatAction(action, color));
@@ -78,7 +88,15 @@ export const renderSyncPlan = (plan: SyncPlan, options: RenderSyncPreviewOptions
 
 export const renderSyncPreview = (plan: SyncPlan, options: RenderSyncPreviewOptions = {}): string =>
   plan.stack.length === 0
-    ? [formatSyncHeader(options.color ?? false), "no active bookmark stack", "next: jjacks create <bookmark-name>"].join("\n")
+    ? [
+        formatSyncHeader(options.color ?? false),
+        ...(plan.localActions.length === 0
+          ? []
+          : ["", options.color === true ? chalk.cyan("local") : "local", ...plan.localActions.map((action) => formatAction(action, options.color ?? false))]),
+        "",
+        "no active bookmark stack",
+        "next: jjacks create <bookmark-name>"
+      ].join("\n")
     : renderSyncPlan(plan, options);
 
 const formatSummaryCount = (count: number, singular: string, plural: string = `${singular}s`): string =>

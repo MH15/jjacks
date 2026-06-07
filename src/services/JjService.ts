@@ -25,18 +25,10 @@ export class JjService extends Context.Tag("JjService")<
     readonly moveUp: Effect.Effect<string, CliError, ProcessService>;
     readonly moveDown: Effect.Effect<string, CliError, ProcessService>;
     readonly syncBookmarkToRemote: (bookmarkName: string) => Effect.Effect<void, CliError, ProcessService>;
-    readonly startWorkingCopyOnBookmark: (options: {
-      readonly bookmarkName: string;
-      readonly message: string;
-    }) => Effect.Effect<string, CliError, ProcessService>;
     readonly continueWorkingCopyOnStack: (options: {
       readonly rootBookmarkName: string;
       readonly currentBookmarkName: string;
       readonly defaultBranch: string;
-      readonly message: string;
-    }) => Effect.Effect<string, CliError, ProcessService>;
-    readonly refreshToRemoteBookmark: (options: {
-      readonly bookmarkName: string;
       readonly message: string;
     }) => Effect.Effect<string, CliError, ProcessService>;
     readonly logBookmarks: (options: {
@@ -116,6 +108,7 @@ const DescendantNode = Schema.Struct({
   commitId: Schema.String,
   description: Schema.String,
   isEmpty: Schema.Boolean,
+  hasConflict: Schema.Boolean,
   parentChangeIds: Schema.Array(Schema.String)
 }).annotations({ identifier: "DescendantNode" });
 type DescendantNode = Schema.Schema.Type<typeof DescendantNode>;
@@ -164,7 +157,7 @@ const stackTemplate =
   `parents.map(|p| p.bookmarks().map(|b| b.name()).join(",")).join("|") ++ "\n"`;
 const descendantTemplate =
   `bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ change_id.short() ++ "\t" ++ commit_id.short() ++ "\t" ++ ` +
-  `description.first_line() ++ "\t" ++ empty ++ "\t" ++ parents.map(|p| p.change_id().short()).join(",") ++ "\n"`;
+  `description.first_line() ++ "\t" ++ empty ++ "\t" ++ conflict ++ "\t" ++ parents.map(|p| p.change_id().short()).join(",") ++ "\n"`;
 const trackedBookmarksRevset = "(::(bookmarks() & ~::trunk())) & ~::trunk()";
 
 const parseDescendantLine = (line: string): DescendantNode | null => {
@@ -172,13 +165,14 @@ const parseDescendantLine = (line: string): DescendantNode | null => {
     return null;
   }
 
-  const [bookmarkNames, changeId, commitId, description, empty, parentChangeIds] = line.split("\t");
+  const [bookmarkNames, changeId, commitId, description, empty, conflict, parentChangeIds] = line.split("\t");
   if (
     bookmarkNames === undefined ||
     changeId === undefined ||
     commitId === undefined ||
     description === undefined ||
-    empty === undefined
+    empty === undefined ||
+    conflict === undefined
   ) {
     return null;
   }
@@ -189,6 +183,7 @@ const parseDescendantLine = (line: string): DescendantNode | null => {
     commitId,
     description,
     isEmpty: empty === "true",
+    hasConflict: conflict === "true",
     parentChangeIds: parentChangeIds === undefined || parentChangeIds.length === 0
       ? []
       : parentChangeIds.split(",").filter((id) => id.length > 0)
@@ -482,7 +477,8 @@ const getTrackedBookmarks = Effect.gen(function* () {
           : { parentBookmarkName: resolveNearestBookmarkedAncestor(node.changeId) }),
         branchName: deriveBranchName(node.bookmarkNames[0]!),
         isCurrent: node.bookmarkNames[0] === currentBookmarkName,
-        isEmpty: node.isEmpty
+        isEmpty: node.isEmpty,
+        hasConflict: node.hasConflict
       }, `Failed to decode tracked bookmark ${node.bookmarkNames[0]!}`)
   );
 
@@ -566,22 +562,6 @@ const make = {
       yield* process.run("jj", ["bookmark", "set", bookmarkName, "-r", `${bookmarkName}@origin`]);
     }),
 
-  startWorkingCopyOnBookmark: ({
-    bookmarkName,
-    message
-  }: {
-    readonly bookmarkName: string;
-    readonly message: string;
-  }) =>
-    Effect.gen(function* () {
-      const process = yield* ProcessService;
-      yield* ensureAdvanceBookmarksEnabled;
-      yield* process.run("jj", ["new", bookmarkName, "-m", message]);
-      yield* process.run("jj", ["rebase", "-s", "@", "-d", bookmarkName]);
-      const summary = yield* process.run("jj", ["log", "-r", "@ | @-", "--no-graph"]);
-      return summary.stdout;
-    }),
-
   continueWorkingCopyOnStack: ({
     rootBookmarkName,
     currentBookmarkName,
@@ -615,23 +595,6 @@ const make = {
       }
 
       const summary = yield* process.run("jj", ["log", "-r", "@ | @- | @--", "--no-graph"]);
-      return summary.stdout;
-    }),
-
-  refreshToRemoteBookmark: ({
-    bookmarkName,
-    message
-  }: {
-    readonly bookmarkName: string;
-    readonly message: string;
-  }) =>
-    Effect.gen(function* () {
-      const process = yield* ProcessService;
-      yield* ensureAdvanceBookmarksEnabled;
-      yield* process.run("jj", ["bookmark", "set", bookmarkName, "-r", `${bookmarkName}@origin`]);
-      yield* process.run("jj", ["new", bookmarkName, "-m", message]);
-      yield* process.run("jj", ["rebase", "-s", "@", "-d", bookmarkName]);
-      const summary = yield* process.run("jj", ["log", "-r", "@ | @-", "--no-graph"]);
       return summary.stdout;
     }),
 
