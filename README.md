@@ -1,16 +1,12 @@
 # jjacks
 
-`jjacks` is a Jujutsu-backed GitHub stacking tool.
+`jjacks` is a Jujutsu-backed GitHub stacking tool following a strict mental model of one "bookmark" per Pull Request.
 
-It is currently a repo-local CLI, not a published npm package. The main job is to take the current `jj` bookmark stack and keep the matching GitHub pull requests in sync.
+## Who's this for?
 
-## Current shape
+Why do we need another stacking tool? There's already [Graphite](https://graphite.com/docs/cli-overview) and a dozen other GitHub stacking tools. While learning [Jujutsu](https://github.com/jj-vcs/jj) the ammend-only workflow felt underused when working with GitHub. In `jjacks`, if you're on a bookmark you'll see the diff at all times.
 
-- One bookmark maps to one PR.
-- Sync works from the current active stack.
-- Bookmark names drive branch names and PR titles.
-- `sync` can preview, push, create PRs, retarget PRs, and update stack comments.
-- `refresh` restacks surviving work onto fresh trunk and opens a continuation working copy.
+
 
 ## Commands
 
