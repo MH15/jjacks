@@ -23,6 +23,7 @@ Why do we need another stacking tool? There's already [Graphite](https://graphit
 ## Docs
 
 - [Tutorial](./docs/tutorial.md)
+- [Open questions](./docs/open_questions.md)
 
 ## Notes
 
