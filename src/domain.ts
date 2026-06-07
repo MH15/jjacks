@@ -1,65 +1,80 @@
-export interface BookmarkNode {
-  readonly name: string;
-  readonly changeId: string;
-  readonly commitId: string;
-  readonly description: string;
-  readonly parentBookmarkName: string | undefined;
-}
+import * as Schema from "effect/Schema";
 
-export interface StackEntry extends BookmarkNode {
-  readonly branchName: string;
-  readonly isCurrent: boolean;
-  readonly isEmpty?: boolean;
-}
+const OptionalString = Schema.optionalWith(Schema.UndefinedOr(Schema.String), { exact: true });
+const OptionalBoolean = Schema.optionalWith(Schema.UndefinedOr(Schema.Boolean), { exact: true });
 
-export interface PullRequestSummary {
-  readonly number: number;
-  readonly url: string;
-  readonly title: string;
-  readonly headRefName: string;
-  readonly baseRefName: string;
-  readonly isDraft: boolean;
-  readonly body: string;
-}
+export const BookmarkNode = Schema.Struct({
+  name: Schema.String,
+  changeId: Schema.String,
+  commitId: Schema.String,
+  description: Schema.String,
+  parentBookmarkName: OptionalString
+}).annotations({ identifier: "BookmarkNode" });
+export type BookmarkNode = Schema.Schema.Type<typeof BookmarkNode>;
 
-export interface PullRequestComment {
-  readonly id: number;
-  readonly body: string;
-  readonly url: string;
-}
+export const StackEntry = Schema.Struct({
+  ...BookmarkNode.fields,
+  branchName: Schema.String,
+  isCurrent: Schema.Boolean,
+  isEmpty: OptionalBoolean
+}).annotations({ identifier: "StackEntry" });
+export type StackEntry = Schema.Schema.Type<typeof StackEntry>;
 
-export interface StackStatusEntry {
-  readonly entry: StackEntry;
-  readonly pullRequest: PullRequestSummary | null;
-  readonly remoteBranchExists: boolean;
-  readonly needsBookmarkPush: boolean;
-}
+export const PullRequestSummary = Schema.Struct({
+  number: Schema.Number,
+  url: Schema.String,
+  title: Schema.String,
+  headRefName: Schema.String,
+  baseRefName: Schema.String,
+  isDraft: Schema.Boolean,
+  body: Schema.String
+}).annotations({ identifier: "PullRequestSummary" });
+export type PullRequestSummary = Schema.Schema.Type<typeof PullRequestSummary>;
 
-export interface SyncPlanEntry {
-  readonly entry: StackEntry;
-  readonly intendedBaseBranch: string;
-  readonly pullRequest: PullRequestSummary | null;
-  readonly remoteBranchExists: boolean;
-  readonly needsBookmarkPush: boolean;
-  readonly actions: ReadonlyArray<string>;
-}
+export const PullRequestComment = Schema.Struct({
+  id: Schema.Number,
+  body: Schema.String,
+  url: Schema.String
+}).annotations({ identifier: "PullRequestComment" });
+export type PullRequestComment = Schema.Schema.Type<typeof PullRequestComment>;
 
-export interface SyncPlan {
-  readonly stack: ReadonlyArray<SyncPlanEntry>;
-}
+export const StackStatusEntry = Schema.Struct({
+  entry: StackEntry,
+  pullRequest: Schema.NullOr(PullRequestSummary),
+  remoteBranchExists: Schema.Boolean,
+  needsBookmarkPush: Schema.Boolean
+}).annotations({ identifier: "StackStatusEntry" });
+export type StackStatusEntry = Schema.Schema.Type<typeof StackStatusEntry>;
 
-export interface RepoInfo {
-  readonly root: string;
-  readonly gitRemote: string | undefined;
-  readonly defaultBranch: string | undefined;
-}
+export const SyncPlanEntry = Schema.Struct({
+  entry: StackEntry,
+  intendedBaseBranch: Schema.String,
+  pullRequest: Schema.NullOr(PullRequestSummary),
+  remoteBranchExists: Schema.Boolean,
+  needsBookmarkPush: Schema.Boolean,
+  actions: Schema.Array(Schema.String)
+}).annotations({ identifier: "SyncPlanEntry" });
+export type SyncPlanEntry = Schema.Schema.Type<typeof SyncPlanEntry>;
 
-export interface ExecuteSyncResult {
-  readonly pushedBookmarks: ReadonlyArray<string>;
-  readonly createdPullRequestBookmarks: ReadonlyArray<string>;
-  readonly updatedPullRequestNumbers: ReadonlyArray<number>;
-  readonly updatedCommentPullRequestNumbers: ReadonlyArray<number>;
-  readonly warnings: ReadonlyArray<string>;
-  readonly plan: SyncPlan;
-  readonly statusEntries: ReadonlyArray<StackStatusEntry>;
-}
+export const SyncPlan = Schema.Struct({
+  stack: Schema.Array(SyncPlanEntry)
+}).annotations({ identifier: "SyncPlan" });
+export type SyncPlan = Schema.Schema.Type<typeof SyncPlan>;
+
+export const RepoInfo = Schema.Struct({
+  root: Schema.String,
+  gitRemote: OptionalString,
+  defaultBranch: OptionalString
+}).annotations({ identifier: "RepoInfo" });
+export type RepoInfo = Schema.Schema.Type<typeof RepoInfo>;
+
+export const ExecuteSyncResult = Schema.Struct({
+  pushedBookmarks: Schema.Array(Schema.String),
+  createdPullRequestBookmarks: Schema.Array(Schema.String),
+  updatedPullRequestNumbers: Schema.Array(Schema.Number),
+  updatedCommentPullRequestNumbers: Schema.Array(Schema.Number),
+  warnings: Schema.Array(Schema.String),
+  plan: SyncPlan,
+  statusEntries: Schema.Array(StackStatusEntry)
+}).annotations({ identifier: "ExecuteSyncResult" });
+export type ExecuteSyncResult = Schema.Schema.Type<typeof ExecuteSyncResult>;

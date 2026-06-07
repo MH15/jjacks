@@ -1,7 +1,7 @@
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, ParseResult, Schema } from "effect";
 
 import { buildDiffArgs, type DiffFormat } from "../diff";
-import type { BookmarkNode, StackEntry } from "../domain";
+import { BookmarkNode, StackEntry, type BookmarkNode as BookmarkNodeType, type StackEntry as StackEntryType } from "../domain";
 import { CliError } from "../errors";
 import { ProcessService } from "./ProcessService";
 
@@ -10,8 +10,8 @@ export class JjService extends Context.Tag("JjService")<
   {
     readonly ensureAdvanceBookmarksEnabled: Effect.Effect<void, CliError, ProcessService>;
     readonly getStackCommentLocation: Effect.Effect<"comment" | "description", CliError, ProcessService>;
-    readonly getCurrentStack: Effect.Effect<ReadonlyArray<StackEntry>, CliError, ProcessService>;
-    readonly getTrackedBookmarks: Effect.Effect<ReadonlyArray<StackEntry>, CliError, ProcessService>;
+    readonly getCurrentStack: Effect.Effect<ReadonlyArray<StackEntryType>, CliError, ProcessService>;
+    readonly getTrackedBookmarks: Effect.Effect<ReadonlyArray<StackEntryType>, CliError, ProcessService>;
     readonly ensureBookmarkDescription: (
       bookmarkName: string,
       description: string
@@ -49,6 +49,18 @@ export class JjService extends Context.Tag("JjService")<
     }) => Effect.Effect<string, CliError, ProcessService>;
   }
 >() {}
+
+const decodeWithSchema = <A, I>(schema: Schema.Schema<A, I>, value: unknown, context: string) =>
+  Schema.decodeUnknown(schema)(value).pipe(
+    Effect.mapError((error) =>
+      new CliError(`${context}\n${ParseResult.TreeFormatter.formatErrorSync(error)}`)
+    )
+  );
+
+const decodeUnknownNullable = <A, I>(schema: Schema.Schema<A, I>, value: unknown): A | null => {
+  const decoded = Schema.decodeUnknownEither(schema)(value);
+  return decoded._tag === "Right" ? decoded.right : null;
+};
 
 const advanceBookmarksError = () =>
   new CliError(
@@ -91,7 +103,29 @@ const getStackCommentLocation = Effect.gen(function* () {
 const deriveBranchName = (bookmarkName: string): string =>
   bookmarkName.replace(/[^A-Za-z0-9/_-]+/g, "-");
 
-const parseTemplateLine = (line: string): (BookmarkNode & { readonly isEmpty: boolean }) | null => {
+const ParsedStackNode = Schema.Struct({
+  ...BookmarkNode.fields,
+  isEmpty: Schema.Boolean
+}).annotations({ identifier: "ParsedStackNode" });
+type ParsedStackNode = Schema.Schema.Type<typeof ParsedStackNode>;
+
+const DescendantNode = Schema.Struct({
+  bookmarkNames: Schema.Array(Schema.String),
+  changeId: Schema.String,
+  commitId: Schema.String,
+  description: Schema.String,
+  isEmpty: Schema.Boolean,
+  parentChangeIds: Schema.Array(Schema.String)
+}).annotations({ identifier: "DescendantNode" });
+type DescendantNode = Schema.Schema.Type<typeof DescendantNode>;
+
+const WorkingCopyState = Schema.Struct({
+  bookmarks: Schema.Array(Schema.String),
+  description: Schema.String
+}).annotations({ identifier: "WorkingCopyState" });
+type WorkingCopyState = Schema.Schema.Type<typeof WorkingCopyState>;
+
+const parseTemplateLine = (line: string): ParsedStackNode | null => {
   if (line.length === 0) {
     return null;
   }
@@ -113,32 +147,20 @@ const parseTemplateLine = (line: string): (BookmarkNode & { readonly isEmpty: bo
       .flatMap((segment) => segment.split(","))
       .find((segment) => segment.length > 0) ?? undefined;
 
-  return {
+  return decodeUnknownNullable(ParsedStackNode, {
     name,
     changeId,
     commitId,
     description,
-    parentBookmarkName: resolvedParentBookmarkName,
+    ...(resolvedParentBookmarkName === undefined ? {} : { parentBookmarkName: resolvedParentBookmarkName }),
     isEmpty: empty === "true"
-  };
+  });
 };
 
 const stackTemplate =
   `bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ change_id.short() ++ "\t" ++ commit_id.short() ++ "\t" ++ ` +
   `description.first_line() ++ "\t" ++ empty ++ "\t" ++ ` +
   `parents.map(|p| p.bookmarks().map(|b| b.name()).join(",")).join("|") ++ "\n"`;
-
-type ParsedStackNode = NonNullable<ReturnType<typeof parseTemplateLine>>;
-
-type DescendantNode = {
-  readonly bookmarkNames: ReadonlyArray<string>;
-  readonly changeId: string;
-  readonly commitId: string;
-  readonly description: string;
-  readonly isEmpty: boolean;
-  readonly parentChangeIds: ReadonlyArray<string>;
-};
-
 const descendantTemplate =
   `bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ change_id.short() ++ "\t" ++ commit_id.short() ++ "\t" ++ ` +
   `description.first_line() ++ "\t" ++ empty ++ "\t" ++ parents.map(|p| p.change_id().short()).join(",") ++ "\n"`;
@@ -159,7 +181,7 @@ const parseDescendantLine = (line: string): DescendantNode | null => {
     return null;
   }
 
-  return {
+  return decodeUnknownNullable(DescendantNode, {
     bookmarkNames: bookmarkNames.length === 0 ? [] : bookmarkNames.split(",").filter((name) => name.length > 0),
     changeId,
     commitId,
@@ -168,12 +190,12 @@ const parseDescendantLine = (line: string): DescendantNode | null => {
     parentChangeIds: parentChangeIds === undefined || parentChangeIds.length === 0
       ? []
       : parentChangeIds.split(",").filter((id) => id.length > 0)
-  };
+  });
 };
 
 const workingCopyStateTemplate = `bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ description.first_line() ++ "\n"`;
 
-const parseWorkingCopyStateLine = (line: string): { readonly bookmarks: ReadonlyArray<string>; readonly description: string } | null => {
+const parseWorkingCopyStateLine = (line: string): WorkingCopyState | null => {
   if (line.length === 0) {
     return null;
   }
@@ -183,16 +205,16 @@ const parseWorkingCopyStateLine = (line: string): { readonly bookmarks: Readonly
     return null;
   }
 
-  return {
+  return decodeUnknownNullable(WorkingCopyState, {
     bookmarks: bookmarks.length === 0 ? [] : bookmarks.split(",").filter((bookmark) => bookmark.length > 0),
     description
-  };
+  });
 };
 
 const createBookmarkStateTemplate =
   `change_id.short() ++ "\t" ++ bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ description.first_line() ++ "\t" ++ "jjacks" ++ "\n"`;
 
-const parseCreateBookmarkStateLine = (line: string): { readonly bookmarks: ReadonlyArray<string>; readonly description: string } | null => {
+const parseCreateBookmarkStateLine = (line: string): WorkingCopyState | null => {
   if (line.length === 0) {
     return null;
   }
@@ -202,22 +224,22 @@ const parseCreateBookmarkStateLine = (line: string): { readonly bookmarks: Reado
     return null;
   }
 
-  return {
+  return decodeUnknownNullable(WorkingCopyState, {
     bookmarks: bookmarks.length === 0 ? [] : bookmarks.split(",").filter((bookmark) => bookmark.length > 0),
     description
-  };
+  });
 };
 
 const orderStackNodes = (
-  allNodes: ReadonlyArray<BookmarkNode>,
-  currentPathNodes: ReadonlyArray<BookmarkNode>
-): ReadonlyArray<BookmarkNode> => {
+  allNodes: ReadonlyArray<BookmarkNodeType>,
+  currentPathNodes: ReadonlyArray<BookmarkNodeType>
+): ReadonlyArray<BookmarkNodeType> => {
   if (currentPathNodes.length === 0) {
     return [];
   }
 
   const seen = new Set(currentPathNodes.map((node) => node.name));
-  const childrenByParent = new Map<string, Array<BookmarkNode>>();
+  const childrenByParent = new Map<string, Array<BookmarkNodeType>>();
 
   for (const node of allNodes) {
     const parentBookmarkName = node.parentBookmarkName;
@@ -253,15 +275,15 @@ const orderStackNodes = (
 };
 
 const orderTrackedBookmarks = (
-  entries: ReadonlyArray<StackEntry>,
+  entries: ReadonlyArray<StackEntryType>,
   currentBookmarkName: string | undefined
-): ReadonlyArray<StackEntry> => {
+): ReadonlyArray<StackEntryType> => {
   if (entries.length === 0) {
     return [];
   }
 
   const byName = new Map(entries.map((entry) => [entry.name, entry] as const));
-  const childrenByParent = new Map<string | undefined, Array<StackEntry>>();
+  const childrenByParent = new Map<string | undefined, Array<StackEntryType>>();
   for (const entry of entries) {
     const existing = childrenByParent.get(entry.parentBookmarkName) ?? [];
     existing.push(entry);
@@ -269,7 +291,7 @@ const orderTrackedBookmarks = (
   }
 
   const subtreeHasCurrent = new Map<string, boolean>();
-  const hasCurrentInSubtree = (entry: StackEntry): boolean => {
+  const hasCurrentInSubtree = (entry: StackEntryType): boolean => {
     const cached = subtreeHasCurrent.get(entry.name);
     if (cached !== undefined) {
       return cached;
@@ -282,7 +304,7 @@ const orderTrackedBookmarks = (
     return result;
   };
 
-  const sortEntries = (items: ReadonlyArray<StackEntry>): Array<StackEntry> =>
+  const sortEntries = (items: ReadonlyArray<StackEntryType>): Array<StackEntryType> =>
     [...items].sort((left, right) => {
       const leftCurrent = hasCurrentInSubtree(left);
       const rightCurrent = hasCurrentInSubtree(right);
@@ -296,9 +318,9 @@ const orderTrackedBookmarks = (
   const roots = sortEntries(
     entries.filter((entry) => entry.parentBookmarkName === undefined || !byName.has(entry.parentBookmarkName))
   );
-  const ordered: Array<StackEntry> = [];
+  const ordered: Array<StackEntryType> = [];
 
-  const visit = (entry: StackEntry): void => {
+  const visit = (entry: StackEntryType): void => {
     ordered.push(entry);
     for (const child of sortEntries(childrenByParent.get(entry.name) ?? [])) {
       visit(child);
@@ -576,18 +598,22 @@ const make = {
       .find((node) => node.bookmarkNames.length > 0)
       ?.bookmarkNames[0];
 
-    const trackedBookmarks = descendantNodes
-      .filter((node) => node.bookmarkNames.length > 0)
-      .map((node): StackEntry => ({
-        name: node.bookmarkNames[0]!,
-        changeId: node.changeId,
-        commitId: node.commitId,
-        description: node.description,
-        parentBookmarkName: resolveNearestBookmarkedAncestor(node.changeId),
-        branchName: deriveBranchName(node.bookmarkNames[0]!),
-        isCurrent: node.bookmarkNames[0] === currentBookmarkName,
-        isEmpty: node.isEmpty
-      }));
+    const trackedBookmarks = yield* Effect.forEach(
+      descendantNodes.filter((node) => node.bookmarkNames.length > 0),
+      (node) =>
+        decodeWithSchema(StackEntry, {
+          name: node.bookmarkNames[0]!,
+          changeId: node.changeId,
+          commitId: node.commitId,
+          description: node.description,
+          ...(resolveNearestBookmarkedAncestor(node.changeId) === undefined
+            ? {}
+            : { parentBookmarkName: resolveNearestBookmarkedAncestor(node.changeId) }),
+          branchName: deriveBranchName(node.bookmarkNames[0]!),
+          isCurrent: node.bookmarkNames[0] === currentBookmarkName,
+          isEmpty: node.isEmpty
+        }, `Failed to decode tracked bookmark ${node.bookmarkNames[0]!}`)
+    );
 
     return orderTrackedBookmarks(trackedBookmarks, currentBookmarkName);
   }),
@@ -633,11 +659,15 @@ const make = {
     const nodes = parseNodes(allBookmarks.stdout);
     const currentPathNodes = [...parseNodes(currentPath.stdout)].reverse();
     const currentBookmarkName = currentPathNodes[currentPathNodes.length - 1]?.name;
-    const ordered = orderStackNodes(nodes, currentPathNodes).map((node) => ({
-      ...node,
-      branchName: deriveBranchName(node.name),
-      isCurrent: node.name === currentBookmarkName
-    }));
+    const ordered = yield* Effect.forEach(
+      orderStackNodes(nodes, currentPathNodes),
+      (node) =>
+        decodeWithSchema(StackEntry, {
+          ...node,
+          branchName: deriveBranchName(node.name),
+          isCurrent: node.name === currentBookmarkName
+        }, `Failed to decode stack entry ${node.name}`)
+    );
 
     return ordered;
   })

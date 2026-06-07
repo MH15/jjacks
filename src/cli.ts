@@ -83,25 +83,37 @@ const create = Command.make("create", { bookmarkName }, ({ bookmarkName }) =>
   })
 ).pipe(Command.withDescription("Open a new child jj change and bookmark it as the next stacked PR."));
 
+const promptError = (context: string, error: unknown): CliError => {
+  if (error instanceof CliError) {
+    return error;
+  }
+
+  if (error instanceof Error && error.name === "ExitPromptError") {
+    return new CliError(`${context} canceled.`);
+  }
+
+  return new CliError(`${context} failed${error instanceof Error && error.message.length > 0 ? `: ${error.message}` : "."}`);
+};
+
 const ensureInteractiveTerminal = (action: string) =>
-  Effect.sync(() => {
-    if (!process.stdin.isTTY || !process.stdout.isTTY) {
-      throw new CliError(`${action} requires an interactive terminal so you can choose from multiple child bookmarks.`);
-    }
-  });
+  !process.stdin.isTTY || !process.stdout.isTTY
+    ? Effect.fail(new CliError(`${action} requires an interactive terminal so you can choose from multiple child bookmarks.`))
+    : Effect.void;
 
 const promptForChildBookmark = (parentBookmarkName: string, childBookmarkNames: ReadonlyArray<string>) =>
-  Effect.promise(() =>
-    select({
-      message: `Choose the child bookmark to continue from ${parentBookmarkName}`,
-      choices: childBookmarkNames.map((childBookmarkName) => ({
-        name: childBookmarkName,
-        value: childBookmarkName
-      }))
-    }, {
-      clearPromptOnDone: true
-    })
-  );
+  Effect.tryPromise({
+    try: () =>
+      select({
+        message: `Choose the child bookmark to continue from ${parentBookmarkName}`,
+        choices: childBookmarkNames.map((childBookmarkName) => ({
+          name: childBookmarkName,
+          value: childBookmarkName
+        }))
+      }, {
+        clearPromptOnDone: true
+      }),
+    catch: (error) => promptError(`Choosing a child bookmark from ${parentBookmarkName}`, error)
+  });
 
 const runMoveCommand = <R>(
   direction: "up" | "down",
@@ -255,14 +267,16 @@ const dryRun = Options.boolean("dry-run").pipe(
   Options.withDescription("Print the sync plan without applying it.")
 );
 
-const promptForSyncConfirmation = Effect.promise(() =>
-  confirm({
-    message: "Apply this sync plan?",
-    default: true
-  }, {
-    clearPromptOnDone: true
-  })
-);
+const promptForSyncConfirmation = Effect.tryPromise({
+  try: () =>
+    confirm({
+      message: "Apply this sync plan?",
+      default: true
+    }, {
+      clearPromptOnDone: true
+    }),
+  catch: (error) => promptError("Sync confirmation", error)
+});
 
 const syncStepTitles = {
   inspect: "Inspect stack",

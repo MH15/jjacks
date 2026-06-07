@@ -47,3 +47,33 @@ describe("GitHubService.createPullRequest", () => {
     }
   });
 });
+
+describe("GitHubService.listIssueComments", () => {
+  it("returns a CliError when gh emits malformed JSON", async () => {
+    const processLayer = Layer.succeed(ProcessService, {
+      run: () =>
+        Effect.succeed({
+          stdout: "{not-json",
+          stderr: "",
+          exitCode: 0
+        })
+    });
+
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const github = yield* GitHubService;
+        return yield* github.listIssueComments(38);
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, GitHubServiceLive)))
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(CliError);
+        expect(failure.value.message).toContain("Failed to decode issue comments for PR #38");
+      }
+    }
+  });
+});

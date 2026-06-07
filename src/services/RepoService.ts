@@ -1,8 +1,8 @@
 import path from "node:path";
 
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, ParseResult, Schema } from "effect";
 
-import type { RepoInfo } from "../domain";
+import { RepoInfo, type RepoInfo as RepoInfoType } from "../domain";
 import { CliError } from "../errors";
 import { ProcessService } from "./ProcessService";
 
@@ -10,9 +10,16 @@ export class RepoService extends Context.Tag("RepoService")<
   RepoService,
   {
     readonly fetchOrigin: Effect.Effect<void, CliError, ProcessService>;
-    readonly getRepoInfo: Effect.Effect<RepoInfo, CliError, ProcessService>;
+    readonly getRepoInfo: Effect.Effect<RepoInfoType, CliError, ProcessService>;
   }
 >() {}
+
+const decodeWithSchema = <A, I>(schema: Schema.Schema<A, I>, value: unknown, context: string) =>
+  Schema.decodeUnknown(schema)(value).pipe(
+    Effect.mapError((error) =>
+      new CliError(`${context}\n${ParseResult.TreeFormatter.formatErrorSync(error)}`)
+    )
+  );
 
 const parseRemote = (stdout: string): string | undefined => {
   const firstLine = stdout.split("\n").find(Boolean);
@@ -45,14 +52,19 @@ const make = {
       allowNonZeroExit: true
     });
 
-    const repoInfo: RepoInfo = {
-      root: path.resolve(root.stdout),
-      gitRemote: remote.exitCode === 0 ? parseRemote(remote.stdout) : undefined,
-      defaultBranch:
-        defaultBranch.exitCode === 0 ? defaultBranch.stdout.replace(/^origin\//, "") : undefined
-    };
-
-    return repoInfo;
+    return yield* decodeWithSchema(
+      RepoInfo,
+      {
+        root: path.resolve(root.stdout),
+        ...(remote.exitCode === 0 && parseRemote(remote.stdout) !== undefined
+          ? { gitRemote: parseRemote(remote.stdout) }
+          : {}),
+        ...(defaultBranch.exitCode === 0
+          ? { defaultBranch: defaultBranch.stdout.replace(/^origin\//, "") }
+          : {})
+      },
+      "Failed to decode repo info"
+    );
   })
 };
 

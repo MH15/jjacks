@@ -1,6 +1,6 @@
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, ParseResult, Schema } from "effect";
 
-import type { PullRequestComment, PullRequestSummary } from "../domain";
+import { PullRequestComment, PullRequestSummary, type PullRequestComment as PullRequestCommentType, type PullRequestSummary as PullRequestSummaryType } from "../domain";
 import { CliError } from "../errors";
 import { ProcessService } from "./ProcessService";
 
@@ -9,16 +9,16 @@ export class GitHubService extends Context.Tag("GitHubService")<
   {
     readonly findPullRequestsByHeads: (
       branchNames: ReadonlyArray<string>
-    ) => Effect.Effect<ReadonlyMap<string, PullRequestSummary>, CliError, ProcessService>;
+    ) => Effect.Effect<ReadonlyMap<string, PullRequestSummaryType>, CliError, ProcessService>;
     readonly findPullRequestByHead: (
       branchName: string
-    ) => Effect.Effect<PullRequestSummary | null, CliError, ProcessService>;
+    ) => Effect.Effect<PullRequestSummaryType | null, CliError, ProcessService>;
     readonly createPullRequest: (options: {
       readonly headBranch: string;
       readonly baseBranch: string;
       readonly title: string;
       readonly body?: string;
-    }) => Effect.Effect<PullRequestSummary, CliError, ProcessService>;
+    }) => Effect.Effect<PullRequestSummaryType, CliError, ProcessService>;
     readonly updatePullRequest: (options: {
       readonly number: number;
       readonly baseBranch?: string;
@@ -27,7 +27,7 @@ export class GitHubService extends Context.Tag("GitHubService")<
     }) => Effect.Effect<void, CliError, ProcessService>;
     readonly listIssueComments: (
       pullRequestNumber: number
-    ) => Effect.Effect<ReadonlyArray<PullRequestComment>, CliError, ProcessService>;
+    ) => Effect.Effect<ReadonlyArray<PullRequestCommentType>, CliError, ProcessService>;
     readonly createIssueComment: (options: {
       readonly pullRequestNumber: number;
       readonly body: string;
@@ -38,6 +38,13 @@ export class GitHubService extends Context.Tag("GitHubService")<
     }) => Effect.Effect<void, CliError, ProcessService>;
   }
 >() {}
+
+const decodeWithSchema = <A, I>(schema: Schema.Schema<A, I>, value: unknown, context: string) =>
+  Schema.decodeUnknown(schema)(value).pipe(
+    Effect.mapError((error) =>
+      new CliError(`${context}\n${ParseResult.TreeFormatter.formatErrorSync(error)}`)
+    )
+  );
 
 const make = {
   findPullRequestsByHeads: (branchNames: ReadonlyArray<string>) =>
@@ -59,7 +66,11 @@ const make = {
       ]);
 
       const requestedBranches = new Set(branchNames);
-      const pullRequests = JSON.parse(result.stdout) as Array<PullRequestSummary>;
+      const pullRequests = yield* decodeWithSchema(
+        Schema.parseJson(Schema.Array(PullRequestSummary)),
+        result.stdout,
+        "Failed to decode gh pr list output"
+      );
 
       return new Map(
         pullRequests
@@ -167,7 +178,11 @@ const make = {
         `/repos/{owner}/{repo}/issues/${pullRequestNumber}/comments`
       ]);
 
-      return JSON.parse(result.stdout) as Array<PullRequestComment>;
+      return yield* decodeWithSchema(
+        Schema.parseJson(Schema.Array(PullRequestComment)),
+        result.stdout,
+        `Failed to decode issue comments for PR #${pullRequestNumber}`
+      );
     }),
 
   createIssueComment: ({
