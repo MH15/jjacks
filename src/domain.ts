@@ -16,7 +16,8 @@ export const StackEntry = Schema.Struct({
   ...BookmarkNode.fields,
   branchName: Schema.String,
   isCurrent: Schema.Boolean,
-  isEmpty: OptionalBoolean
+  isEmpty: OptionalBoolean,
+  hasConflict: OptionalBoolean
 }).annotations({ identifier: "StackEntry" });
 export type StackEntry = Schema.Schema.Type<typeof StackEntry>;
 
@@ -26,6 +27,7 @@ export const PullRequestSummary = Schema.Struct({
   title: Schema.String,
   headRefName: Schema.String,
   baseRefName: Schema.String,
+  state: OptionalString,
   isDraft: Schema.Boolean,
   body: Schema.String
 }).annotations({ identifier: "PullRequestSummary" });
@@ -42,7 +44,8 @@ export const StackStatusEntry = Schema.Struct({
   entry: StackEntry,
   pullRequest: Schema.NullOr(PullRequestSummary),
   remoteBranchExists: Schema.Boolean,
-  needsBookmarkPush: Schema.Boolean
+  needsBookmarkPush: Schema.Boolean,
+  blockedBy: OptionalString
 }).annotations({ identifier: "StackStatusEntry" });
 export type StackStatusEntry = Schema.Schema.Type<typeof StackStatusEntry>;
 
@@ -57,6 +60,7 @@ export const SyncPlanEntry = Schema.Struct({
 export type SyncPlanEntry = Schema.Schema.Type<typeof SyncPlanEntry>;
 
 export const SyncPlan = Schema.Struct({
+  localActions: Schema.Array(Schema.String),
   stack: Schema.Array(SyncPlanEntry)
 }).annotations({ identifier: "SyncPlan" });
 export type SyncPlan = Schema.Schema.Type<typeof SyncPlan>;

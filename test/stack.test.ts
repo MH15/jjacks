@@ -116,9 +116,7 @@ const makeLayer = (options?: {
     moveUp: Effect.succeed(""),
     moveDown: Effect.succeed(""),
     syncBookmarkToRemote: () => Effect.void,
-    startWorkingCopyOnBookmark: () => Effect.succeed(""),
     continueWorkingCopyOnStack: () => Effect.succeed(""),
-    refreshToRemoteBookmark: () => Effect.succeed(""),
     diffCurrentStack: () => Effect.succeed("")
   });
 
@@ -287,9 +285,7 @@ describe("StackService with injected fakes", () => {
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
-      startWorkingCopyOnBookmark: () => Effect.succeed(""),
       continueWorkingCopyOnStack: () => Effect.succeed(""),
-      refreshToRemoteBookmark: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.die("diffCurrentStack should not be used in this test.")
     });
 
@@ -373,9 +369,7 @@ describe("StackService with injected fakes", () => {
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
-      startWorkingCopyOnBookmark: () => Effect.succeed(""),
       continueWorkingCopyOnStack: () => Effect.succeed(""),
-      refreshToRemoteBookmark: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.die("diffCurrentStack should not be used in this test.")
     });
 
@@ -514,9 +508,7 @@ describe("StackService with injected fakes", () => {
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
-      startWorkingCopyOnBookmark: () => Effect.succeed(""),
       continueWorkingCopyOnStack: () => Effect.succeed(""),
-      refreshToRemoteBookmark: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.succeed("")
     });
 
@@ -649,9 +641,7 @@ describe("StackService with injected fakes", () => {
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
-      startWorkingCopyOnBookmark: () => Effect.succeed(""),
       continueWorkingCopyOnStack: () => Effect.succeed(""),
-      refreshToRemoteBookmark: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.succeed("")
     });
 
@@ -747,9 +737,7 @@ describe("StackService with injected fakes", () => {
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
-      startWorkingCopyOnBookmark: () => Effect.succeed(""),
       continueWorkingCopyOnStack: () => Effect.succeed(""),
-      refreshToRemoteBookmark: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.succeed("")
     });
 
@@ -878,10 +866,106 @@ describe("buildSyncPlanFromStatus", () => {
       "main"
     );
 
+    expect(plan.localActions).toEqual([
+      "fetch origin",
+      "move main to main@origin",
+      "rebase mh/inquirer onto main",
+      "continue from mh/ancestors"
+    ]);
     expect(plan.stack[0]?.intendedBaseBranch).toBe("main");
     expect(plan.stack[0]?.actions).toContain("retarget PR #17 base from mh/refrehs-fixes to main");
     expect(plan.stack[1]?.intendedBaseBranch).toBe("mh/inquirer");
     expect(plan.stack[1]?.actions).not.toContain(expect.stringContaining("retarget PR #18"));
+  });
+
+  it("blocks a conflicted subtree from GitHub actions", () => {
+    const plan = buildSyncPlanFromStatus(
+      [
+        {
+          entry: {
+            name: "feat/base",
+            changeId: "aaa111",
+            commitId: "111aaa",
+            description: "feat/base",
+            parentBookmarkName: undefined,
+            branchName: "feat/base",
+            isCurrent: false,
+            hasConflict: true
+          },
+          pullRequest: {
+            number: 12,
+            url: "https://github.com/MH15/jjacks/pull/12",
+            title: "feat/base",
+            headRefName: "feat/base",
+            baseRefName: "old-base",
+            isDraft: false,
+            body: ""
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: true,
+          blockedBy: "feat/base"
+        },
+        {
+          entry: {
+            name: "feat/ui",
+            changeId: "bbb222",
+            commitId: "222bbb",
+            description: "feat/ui",
+            parentBookmarkName: "feat/base",
+            branchName: "feat/ui",
+            isCurrent: true
+          },
+          pullRequest: null,
+          remoteBranchExists: false,
+          needsBookmarkPush: true,
+          blockedBy: "feat/base"
+        }
+      ],
+      "main"
+    );
+
+    expect(plan.stack[0]?.actions).toContain("blocked by local conflict; resolve before syncing this subtree");
+    expect(plan.stack[0]?.actions).not.toContain("push bookmark");
+    expect(plan.stack[0]?.actions).not.toContain(expect.stringContaining("retarget PR #12"));
+    expect(plan.stack[1]?.actions).toContain("blocked by local conflict in feat/base; resolve parent before syncing this subtree");
+    expect(plan.stack[1]?.actions).not.toContain("push bookmark");
+    expect(plan.stack[1]?.actions).not.toContain(expect.stringContaining("create PR"));
+  });
+
+  it("does not recreate or mutate merged pull requests", () => {
+    const plan = buildSyncPlanFromStatus(
+      [
+        {
+          entry: {
+            name: "mh/open-questions",
+            changeId: "aaa111",
+            commitId: "111aaa",
+            description: "mh/open-questions",
+            parentBookmarkName: undefined,
+            branchName: "mh/open-questions",
+            isCurrent: false
+          },
+          pullRequest: {
+            number: 55,
+            url: "https://github.com/MH15/jjacks/pull/55",
+            title: "mh/open-questions",
+            headRefName: "mh/open-questions",
+            baseRefName: "old-main",
+            state: "MERGED",
+            isDraft: false,
+            body: ""
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: true
+        }
+      ],
+      "main"
+    );
+
+    expect(plan.stack[0]?.actions).toContain("PR #55 is merged; skipping GitHub updates");
+    expect(plan.stack[0]?.actions).not.toContain("push bookmark");
+    expect(plan.stack[0]?.actions).not.toContain(expect.stringContaining("create PR"));
+    expect(plan.stack[0]?.actions).not.toContain(expect.stringContaining("retarget PR #55"));
   });
 
   it("keeps sibling branches based on their shared bookmarked parent instead of chaining them together", () => {

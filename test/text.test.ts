@@ -4,6 +4,7 @@ import type { ExecuteSyncResult, SyncPlan } from "../src/domain";
 import { renderExecuteSummary, renderStatus, renderSyncPreview } from "../src/text";
 
 const plan: SyncPlan = {
+  localActions: ["fetch origin", "move main to main@origin"],
   stack: [
     {
       entry: {
@@ -45,7 +46,7 @@ describe("renderSyncPreview", () => {
   });
 
   it("renders a friendly empty-state preview when there is no active stack", () => {
-    const output = renderSyncPreview({ stack: [] });
+    const output = renderSyncPreview({ localActions: [], stack: [] });
 
     expect(output).toContain("no active bookmark stack");
     expect(output).toContain("jjacks create <bookmark-name>");
@@ -53,6 +54,7 @@ describe("renderSyncPreview", () => {
 
   it("shows no changes for unchanged bookmarks", () => {
     const output = renderSyncPreview({
+      localActions: [],
       stack: [
         {
           ...plan.stack[0]!,

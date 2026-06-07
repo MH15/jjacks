@@ -15,7 +15,6 @@ Why do we need another stacking tool? There's already [Graphite](https://graphit
 - `jjacks create <bookmark-name>`
 - `jjacks up`
 - `jjacks down`
-- `jjacks refresh`
 - `jjacks diff`
 - `jjacks sync`
 - `jjacks sync --execute`

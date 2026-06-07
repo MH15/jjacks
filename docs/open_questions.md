@@ -54,38 +54,45 @@ The resume behavior can be idempotent:
 
 Do not attempt true rollback. GitHub side effects are hard to safely undo. Resume plus clear status is the practical win.
 
-## 2. Should `refresh` Update GitHub Too?
+## 2. Should `sync` Own Local Refresh Too?
 
-The tutorial says `refresh` should restack surviving work and update PR bases. The current command handles the local restack/continuation part, but GitHub PR bases are only fixed by a later `sync`.
+Decision: yes. `sync` should be the convergence command.
 
-That gap is surprising because post-merge refresh is exactly when review state needs to be repaired.
+The previous split between `refresh` and `sync` separated local stack repair from GitHub repair, but the real user intent is simpler: make my current stack match trunk and GitHub.
 
 ### 90/10 Implementation
 
-Make the default flow explicit:
+Make `jjacks sync` preview the whole convergence plan:
 
-- `jjacks refresh` performs local-only refresh and prints `next: jjacks sync`
-- `jjacks refresh --sync` performs refresh, then runs the same sync planner
-- `jjacks refresh --sync --execute` applies the sync without a second prompt
+- fetch origin
+- move the default bookmark to its remote
+- rebase the active stack root onto the default bookmark
+- continue from the current stack entry
+- push syncable bookmarks
+- create/update/retarget syncable PRs
+- update stack breadcrumbs for syncable PRs
 
 The preview should say clearly:
 
 ```text
-jjacks refresh
-- fetched origin
-- moved main to main@origin
-- restacked feat/ui onto main
-- continuing feat/ui
-
 jjacks sync plan
+local
+- fetch origin
+- move main to main@origin
+- rebase feat/ui onto main
+- continue from feat/ui
+
+github
 feat/ui (PR #13)
 - retarget PR #13 base from feat/base to main
 - push bookmark
 ```
 
+If any bookmark conflicts during restack, that bookmark and all descendants are blocked from GitHub mutation. Clean sibling subtrees may still sync.
+
 ### Not Yet
 
-Do not make refresh always mutate GitHub. Keeping `refresh` local by default makes it safe to run while resolving conflicts or inspecting the stack.
+Do not add a second local-only command yet. If we need one later, prefer `jjacks sync --local-only` over reviving a separate `refresh` workflow.
 
 ## 3. How Explicit Should Stack Identity Be?
 
@@ -181,7 +188,7 @@ Start with five scenarios:
 - create first bookmark from empty trunk continuation
 - create child bookmark from an existing bookmark
 - sync dry-run for two-layer stack without calling GitHub
-- refresh after simulated merged lower layer
+- sync after simulated merged lower layer
 - up/down through a multi-child stack
 
 Mock GitHub at the process boundary with a fake `gh` executable earlier in `PATH`. That keeps tests deterministic while still exercising the real CLI and process service.
@@ -194,8 +201,8 @@ Do not require network access in CI. No real GitHub calls should be needed for t
 
 1. Add integration harness with fake `gh`.
 2. Add explicit `PullRequestIndex` and better PR state modeling.
-3. Add `refresh --sync` and make the local-vs-GitHub boundary obvious.
+3. Make sync own local refresh and make the local-vs-GitHub boundary obvious in the plan.
 4. Add sync operation journals and `sync --resume`.
 5. Add optional named stack roots once the implicit model has sharper tests.
 
-This order buys confidence before adding more behavior. The harness catches regressions, PR indexing makes sync safer, refresh closes the biggest workflow gap, journaling handles failures, and explicit stack roots reduce ambiguity once real-world usage needs it.
+This order buys confidence before adding more behavior. The harness catches regressions, PR indexing makes sync safer, sync-owned refresh closes the biggest workflow gap, journaling handles failures, and explicit stack roots reduce ambiguity once real-world usage needs it.
