@@ -11,6 +11,7 @@ export class JjService extends Context.Tag("JjService")<
     readonly ensureAdvanceBookmarksEnabled: Effect.Effect<void, CliError, ProcessService>;
     readonly getStackCommentLocation: Effect.Effect<"comment" | "description", CliError, ProcessService>;
     readonly getCurrentStack: Effect.Effect<ReadonlyArray<StackEntryType>, CliError, ProcessService>;
+    readonly getCurrentTree: Effect.Effect<ReadonlyArray<StackEntryType>, CliError, ProcessService>;
     readonly getTrackedBookmarks: Effect.Effect<ReadonlyArray<StackEntryType>, CliError, ProcessService>;
     readonly ensureBookmarkDescription: (
       bookmarkName: string,
@@ -334,6 +335,166 @@ const orderTrackedBookmarks = (
   return ordered;
 };
 
+const selectCurrentBookmarkTree = (
+  entries: ReadonlyArray<StackEntryType>,
+  currentBookmarkName: string | undefined
+): ReadonlyArray<StackEntryType> => {
+  if (currentBookmarkName === undefined) {
+    return [];
+  }
+
+  const byName = new Map(entries.map((entry) => [entry.name, entry] as const));
+  const currentEntry = byName.get(currentBookmarkName);
+  if (currentEntry === undefined) {
+    return [];
+  }
+
+  let rootEntry = currentEntry;
+  while (rootEntry.parentBookmarkName !== undefined) {
+    const parentEntry = byName.get(rootEntry.parentBookmarkName);
+    if (parentEntry === undefined) {
+      break;
+    }
+    rootEntry = parentEntry;
+  }
+
+  const childrenByParent = new Map<string, Array<StackEntryType>>();
+  for (const entry of entries) {
+    const parentBookmarkName = entry.parentBookmarkName;
+    if (parentBookmarkName === undefined) {
+      continue;
+    }
+
+    const existing = childrenByParent.get(parentBookmarkName) ?? [];
+    existing.push(entry);
+    childrenByParent.set(parentBookmarkName, existing);
+  }
+
+  const subtreeNames = new Set<string>();
+  const visit = (entryName: string): void => {
+    if (subtreeNames.has(entryName)) {
+      return;
+    }
+
+    subtreeNames.add(entryName);
+    for (const child of childrenByParent.get(entryName) ?? []) {
+      visit(child.name);
+    }
+  };
+
+  visit(rootEntry.name);
+
+  return orderTrackedBookmarks(
+    entries.filter((entry) => subtreeNames.has(entry.name)),
+    currentBookmarkName
+  );
+};
+
+const getTrackedBookmarks = Effect.gen(function* () {
+  const process = yield* ProcessService;
+  yield* ensureAdvanceBookmarksEnabled;
+
+  const [descendants, currentPath] = yield* Effect.all([
+    process.run("jj", ["log", "-r", "descendants(trunk()) & ~trunk()", "-T", descendantTemplate, "--no-graph"], {
+      allowNonZeroExit: true
+    }),
+    process.run("jj", ["log", "-r", "::@ & descendants(trunk())", "-T", descendantTemplate, "--no-graph"], {
+      allowNonZeroExit: true
+    })
+  ]);
+
+  if (descendants.exitCode !== 0 || currentPath.exitCode !== 0) {
+    const failingResult = descendants.exitCode !== 0 ? descendants : currentPath;
+
+    if (failingResult.stderr.includes("There is no jj repo")) {
+      return yield* Effect.fail(
+        new CliError('This directory is a Git repo but not a jj repo yet. Run "jj git init" here first, then rerun jjacks.')
+      );
+    }
+
+    return yield* Effect.fail(
+      new CliError(
+        [`Failed to inspect tracked jj bookmarks.`, failingResult.stderr, failingResult.stdout]
+          .filter(Boolean)
+          .join("\n")
+      )
+    );
+  }
+
+  const parseDescendants = (stdout: string) =>
+    stdout
+      .split("\n")
+      .map((line) => parseDescendantLine(line))
+      .filter((node): node is NonNullable<typeof node> => node !== null);
+
+  const descendantNodes = parseDescendants(descendants.stdout);
+  const descendantByChangeId = new Map(descendantNodes.map((node) => [node.changeId, node] as const));
+  const bookmarkNameByChangeId = new Map(
+    descendantNodes
+      .filter((node) => node.bookmarkNames.length > 0)
+      .map((node) => [node.changeId, node.bookmarkNames[0]!] as const)
+  );
+
+  const nearestBookmarkedAncestor = new Map<string, string | undefined>();
+  const resolveNearestBookmarkedAncestor = (changeId: string): string | undefined => {
+    if (nearestBookmarkedAncestor.has(changeId)) {
+      return nearestBookmarkedAncestor.get(changeId);
+    }
+
+    const node = descendantByChangeId.get(changeId);
+    if (node === undefined) {
+      nearestBookmarkedAncestor.set(changeId, undefined);
+      return undefined;
+    }
+
+    for (const parentChangeId of node.parentChangeIds) {
+      const parentBookmark = bookmarkNameByChangeId.get(parentChangeId);
+      if (parentBookmark !== undefined) {
+        nearestBookmarkedAncestor.set(changeId, parentBookmark);
+        return parentBookmark;
+      }
+
+      const ancestorBookmark = resolveNearestBookmarkedAncestor(parentChangeId);
+      if (ancestorBookmark !== undefined) {
+        nearestBookmarkedAncestor.set(changeId, ancestorBookmark);
+        return ancestorBookmark;
+      }
+    }
+
+    nearestBookmarkedAncestor.set(changeId, undefined);
+    return undefined;
+  };
+
+  const currentBookmarkName = parseDescendants(currentPath.stdout)
+    .find((node) => node.bookmarkNames.length > 0)
+    ?.bookmarkNames[0];
+
+  const trackedBookmarks = yield* Effect.forEach(
+    descendantNodes.filter((node) => node.bookmarkNames.length > 0),
+    (node) =>
+      decodeWithSchema(StackEntry, {
+        name: node.bookmarkNames[0]!,
+        changeId: node.changeId,
+        commitId: node.commitId,
+        description: node.description,
+        ...(resolveNearestBookmarkedAncestor(node.changeId) === undefined
+          ? {}
+          : { parentBookmarkName: resolveNearestBookmarkedAncestor(node.changeId) }),
+        branchName: deriveBranchName(node.bookmarkNames[0]!),
+        isCurrent: node.bookmarkNames[0] === currentBookmarkName,
+        isEmpty: node.isEmpty
+      }, `Failed to decode tracked bookmark ${node.bookmarkNames[0]!}`)
+  );
+
+  return orderTrackedBookmarks(trackedBookmarks, currentBookmarkName);
+});
+
+const getCurrentTree = Effect.gen(function* () {
+  const trackedBookmarks = yield* getTrackedBookmarks;
+  const currentBookmarkName = trackedBookmarks.find((entry) => entry.isCurrent)?.name;
+  return selectCurrentBookmarkTree(trackedBookmarks, currentBookmarkName);
+});
+
 const make = {
   ensureAdvanceBookmarksEnabled,
   getStackCommentLocation,
@@ -519,104 +680,9 @@ const make = {
       return result.stdout;
     }),
 
-  getTrackedBookmarks: Effect.gen(function* () {
-    const process = yield* ProcessService;
-    yield* ensureAdvanceBookmarksEnabled;
+  getTrackedBookmarks,
 
-    const [descendants, currentPath] = yield* Effect.all([
-      process.run("jj", ["log", "-r", "descendants(trunk()) & ~trunk()", "-T", descendantTemplate, "--no-graph"], {
-        allowNonZeroExit: true
-      }),
-      process.run("jj", ["log", "-r", "::@ & descendants(trunk())", "-T", descendantTemplate, "--no-graph"], {
-        allowNonZeroExit: true
-      })
-    ]);
-
-    if (descendants.exitCode !== 0 || currentPath.exitCode !== 0) {
-      const failingResult = descendants.exitCode !== 0 ? descendants : currentPath;
-
-      if (failingResult.stderr.includes("There is no jj repo")) {
-        return yield* Effect.fail(
-          new CliError('This directory is a Git repo but not a jj repo yet. Run "jj git init" here first, then rerun jjacks.')
-        );
-      }
-
-      return yield* Effect.fail(
-        new CliError(
-          [`Failed to inspect tracked jj bookmarks.`, failingResult.stderr, failingResult.stdout]
-            .filter(Boolean)
-            .join("\n")
-        )
-      );
-    }
-
-    const parseDescendants = (stdout: string) =>
-      stdout
-        .split("\n")
-        .map((line) => parseDescendantLine(line))
-        .filter((node): node is NonNullable<typeof node> => node !== null);
-
-    const descendantNodes = parseDescendants(descendants.stdout);
-    const descendantByChangeId = new Map(descendantNodes.map((node) => [node.changeId, node] as const));
-    const bookmarkNameByChangeId = new Map(
-      descendantNodes
-        .filter((node) => node.bookmarkNames.length > 0)
-        .map((node) => [node.changeId, node.bookmarkNames[0]!] as const)
-    );
-
-    const nearestBookmarkedAncestor = new Map<string, string | undefined>();
-    const resolveNearestBookmarkedAncestor = (changeId: string): string | undefined => {
-      if (nearestBookmarkedAncestor.has(changeId)) {
-        return nearestBookmarkedAncestor.get(changeId);
-      }
-
-      const node = descendantByChangeId.get(changeId);
-      if (node === undefined) {
-        nearestBookmarkedAncestor.set(changeId, undefined);
-        return undefined;
-      }
-
-      for (const parentChangeId of node.parentChangeIds) {
-        const parentBookmark = bookmarkNameByChangeId.get(parentChangeId);
-        if (parentBookmark !== undefined) {
-          nearestBookmarkedAncestor.set(changeId, parentBookmark);
-          return parentBookmark;
-        }
-
-        const ancestorBookmark = resolveNearestBookmarkedAncestor(parentChangeId);
-        if (ancestorBookmark !== undefined) {
-          nearestBookmarkedAncestor.set(changeId, ancestorBookmark);
-          return ancestorBookmark;
-        }
-      }
-
-      nearestBookmarkedAncestor.set(changeId, undefined);
-      return undefined;
-    };
-
-    const currentBookmarkName = parseDescendants(currentPath.stdout)
-      .find((node) => node.bookmarkNames.length > 0)
-      ?.bookmarkNames[0];
-
-    const trackedBookmarks = yield* Effect.forEach(
-      descendantNodes.filter((node) => node.bookmarkNames.length > 0),
-      (node) =>
-        decodeWithSchema(StackEntry, {
-          name: node.bookmarkNames[0]!,
-          changeId: node.changeId,
-          commitId: node.commitId,
-          description: node.description,
-          ...(resolveNearestBookmarkedAncestor(node.changeId) === undefined
-            ? {}
-            : { parentBookmarkName: resolveNearestBookmarkedAncestor(node.changeId) }),
-          branchName: deriveBranchName(node.bookmarkNames[0]!),
-          isCurrent: node.bookmarkNames[0] === currentBookmarkName,
-          isEmpty: node.isEmpty
-        }, `Failed to decode tracked bookmark ${node.bookmarkNames[0]!}`)
-    );
-
-    return orderTrackedBookmarks(trackedBookmarks, currentBookmarkName);
-  }),
+  getCurrentTree,
 
   getCurrentStack: Effect.gen(function* () {
     const process = yield* ProcessService;
@@ -674,4 +740,4 @@ const make = {
 };
 
 export const JjServiceLive = Layer.succeed(JjService, make);
-export { orderStackNodes };
+export { orderStackNodes, selectCurrentBookmarkTree };
