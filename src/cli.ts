@@ -210,9 +210,9 @@ const refresh = Command.make("refresh", {}, () =>
           })
         : yield* jjService.continueWorkingCopyOnStack({
             rootBookmarkName: plan.rootBookmarkName,
-            tipBookmarkName: plan.tipBookmarkName,
+            currentBookmarkName: plan.currentBookmarkName,
             defaultBranch,
-            message: `Continue ${plan.tipBookmarkName}`
+            message: `Continue ${plan.currentBookmarkName}`
           });
 
     yield* Console.log(renderRefreshSummary(plan, workingCopyLog, { color: true }));

@@ -11,17 +11,17 @@ export type RefreshPlan =
       readonly kind: "continue-stack";
       readonly defaultBranch: string;
       readonly rootBookmarkName: string;
-      readonly tipBookmarkName: string;
+      readonly currentBookmarkName: string;
     };
 
 export const resolveRefreshPlan = (
   entries: ReadonlyArray<StackStatusEntry>,
   defaultBranch: string
 ): RefreshPlan => {
-  const rootBookmarkName = entries[0]?.entry.name;
-  const tipBookmarkName = entries[entries.length - 1]?.entry.name;
+  const currentEntry = entries.find((entry) => entry.entry.isCurrent)?.entry;
+  const rootEntry = entries[0]?.entry;
 
-  if (rootBookmarkName === undefined || tipBookmarkName === undefined) {
+  if (rootEntry === undefined || currentEntry === undefined) {
     return {
       kind: "clean-trunk",
       defaultBranch
@@ -31,8 +31,8 @@ export const resolveRefreshPlan = (
   return {
     kind: "continue-stack",
     defaultBranch,
-    rootBookmarkName,
-    tipBookmarkName
+    rootBookmarkName: rootEntry.name,
+    currentBookmarkName: currentEntry.name
   };
 };
 
@@ -59,7 +59,7 @@ export const renderRefreshSummary = (
       ? [`- no remaining stack; continuing from ${defaultBranch}`]
       : [
           `- restacked remaining stack onto ${defaultBranch}`,
-          `- continuing ${formatBookmark(plan.tipBookmarkName, color)}`
+          `- continuing ${formatBookmark(plan.currentBookmarkName, color)}`
         ]),
     "",
     color ? chalk.dim("current jj state") : "current jj state",
