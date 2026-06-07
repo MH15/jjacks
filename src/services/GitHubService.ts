@@ -17,11 +17,13 @@ export class GitHubService extends Context.Tag("GitHubService")<
       readonly headBranch: string;
       readonly baseBranch: string;
       readonly title: string;
+      readonly body?: string;
     }) => Effect.Effect<PullRequestSummary, CliError, ProcessService>;
     readonly updatePullRequest: (options: {
       readonly number: number;
       readonly baseBranch?: string;
       readonly title?: string;
+      readonly body?: string;
     }) => Effect.Effect<void, CliError, ProcessService>;
     readonly listIssueComments: (
       pullRequestNumber: number
@@ -51,7 +53,7 @@ const make = {
         "--state",
         "open",
         "--json",
-        "number,url,title,headRefName,baseRefName,isDraft",
+        "number,url,title,headRefName,baseRefName,isDraft,body",
         "--limit",
         "200"
       ]);
@@ -75,11 +77,13 @@ const make = {
   createPullRequest: ({
     headBranch,
     baseBranch,
-    title
+    title,
+    body
   }: {
     readonly headBranch: string;
     readonly baseBranch: string;
     readonly title: string;
+    readonly body?: string;
   }) =>
     Effect.gen(function* () {
       const process = yield* ProcessService;
@@ -94,7 +98,7 @@ const make = {
           "--title",
           title,
           "--body",
-          ""
+          body ?? ""
         ])
         .pipe(
           Effect.catchIf(
@@ -124,11 +128,13 @@ const make = {
   updatePullRequest: ({
     number,
     baseBranch,
-    title
+    title,
+    body
   }: {
     readonly number: number;
     readonly baseBranch?: string;
     readonly title?: string;
+    readonly body?: string;
   }) =>
     Effect.gen(function* () {
       const args = ["pr", "edit", String(number)] as Array<string>;
@@ -139,6 +145,10 @@ const make = {
 
       if (title !== undefined) {
         args.push("--title", title);
+      }
+
+      if (body !== undefined) {
+        args.push("--body", body);
       }
 
       if (args.length === 3) {

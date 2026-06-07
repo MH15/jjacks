@@ -9,6 +9,7 @@ export class JjService extends Context.Tag("JjService")<
   JjService,
   {
     readonly ensureAdvanceBookmarksEnabled: Effect.Effect<void, CliError, ProcessService>;
+    readonly getStackCommentLocation: Effect.Effect<"comment" | "description", CliError, ProcessService>;
     readonly getCurrentStack: Effect.Effect<ReadonlyArray<StackEntry>, CliError, ProcessService>;
     readonly getTrackedBookmarks: Effect.Effect<ReadonlyArray<StackEntry>, CliError, ProcessService>;
     readonly ensureBookmarkDescription: (
@@ -63,6 +64,28 @@ const ensureAdvanceBookmarksEnabled = Effect.gen(function* () {
   if (result.exitCode !== 0 || result.stdout.trim() !== "true") {
     return yield* Effect.fail(advanceBookmarksError());
   }
+});
+
+const getStackCommentLocation = Effect.gen(function* () {
+  const process = yield* ProcessService;
+  const result = yield* process.run("jj", ["config", "get", "jjacks.stack_comments.location"], {
+    allowNonZeroExit: true
+  });
+
+  if (result.exitCode !== 0 || result.stdout.trim().length === 0) {
+    return "comment" as const;
+  }
+
+  const value = result.stdout.trim();
+  if (value === "comment" || value === "description") {
+    return value;
+  }
+
+  return yield* Effect.fail(
+    new CliError(
+      `Unsupported value for jjacks.stack_comments.location: ${value}\nExpected one of: comment, description`
+    )
+  );
 });
 
 const deriveBranchName = (bookmarkName: string): string =>
@@ -157,6 +180,25 @@ const parseWorkingCopyStateLine = (line: string): { readonly bookmarks: Readonly
 
   const [bookmarks, description] = line.split("\t");
   if (bookmarks === undefined || description === undefined) {
+    return null;
+  }
+
+  return {
+    bookmarks: bookmarks.length === 0 ? [] : bookmarks.split(",").filter((bookmark) => bookmark.length > 0),
+    description
+  };
+};
+
+const createBookmarkStateTemplate =
+  `change_id.short() ++ "\t" ++ bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ description.first_line() ++ "\t" ++ "jjacks" ++ "\n"`;
+
+const parseCreateBookmarkStateLine = (line: string): { readonly bookmarks: ReadonlyArray<string>; readonly description: string } | null => {
+  if (line.length === 0) {
+    return null;
+  }
+
+  const [changeId, bookmarks, description, marker] = line.split("\t");
+  if (changeId === undefined || bookmarks === undefined || description === undefined || marker !== "jjacks") {
     return null;
   }
 
@@ -272,6 +314,7 @@ const orderTrackedBookmarks = (
 
 const make = {
   ensureAdvanceBookmarksEnabled,
+  getStackCommentLocation,
 
   ensureBookmarkDescription: (bookmarkName: string, description: string) =>
     Effect.gen(function* () {
@@ -289,8 +332,8 @@ const make = {
     Effect.gen(function* () {
       const process = yield* ProcessService;
       yield* ensureAdvanceBookmarksEnabled;
-      const workingCopyState = yield* process.run("jj", ["log", "-r", "@", "-T", workingCopyStateTemplate, "--no-graph"]);
-      const currentState = parseWorkingCopyStateLine(workingCopyState.stdout);
+      const workingCopyState = yield* process.run("jj", ["log", "-r", "@", "-T", createBookmarkStateTemplate, "--no-graph"]);
+      const currentState = parseCreateBookmarkStateLine(workingCopyState.stdout);
 
       if (currentState?.bookmarks.length !== 0) {
         yield* process.run("jj", ["new", "-m", message]);

@@ -64,7 +64,8 @@ describe("resolveRefreshPlan", () => {
           title: "feat/base",
           headRefName: "feat/base",
           baseRefName: "main",
-          isDraft: false
+          isDraft: false,
+          body: ""
         },
         remoteBranchExists: true,
         needsBookmarkPush: false
@@ -85,7 +86,8 @@ describe("resolveRefreshPlan", () => {
           title: "feat/ui",
           headRefName: "feat/ui",
           baseRefName: "feat/base",
-          isDraft: false
+          isDraft: false,
+          body: ""
         },
         remoteBranchExists: true,
         needsBookmarkPush: false
@@ -118,7 +120,8 @@ describe("resolveRefreshPlan", () => {
           title: "mh/inquirer",
           headRefName: "mh/inquirer",
           baseRefName: "mh/refrehs-fixes",
-          isDraft: false
+          isDraft: false,
+          body: ""
         },
         remoteBranchExists: true,
         needsBookmarkPush: true
@@ -139,7 +142,8 @@ describe("resolveRefreshPlan", () => {
           title: "mh/ancestors",
           headRefName: "mh/ancestors",
           baseRefName: "mh/inquirer",
-          isDraft: false
+          isDraft: false,
+          body: ""
         },
         remoteBranchExists: true,
         needsBookmarkPush: true

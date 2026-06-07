@@ -157,7 +157,7 @@ describe("JjService.moveToBookmark", () => {
 });
 
 describe("JjService.createBookmark", () => {
-  it("reuses the current unbookmarked working copy instead of creating another child change", async () => {
+  it("reuses the current unbookmarked working copy even when its description is blank", async () => {
     const calls: Array<ReadonlyArray<string>> = [];
 
     const processLayer = makeProcessLayer((_command, args) => {
@@ -169,7 +169,7 @@ describe("JjService.createBookmark", () => {
 
       if (args[0] === "log" && args[1] === "-r" && args[2] === "@") {
         return {
-          stdout: "\tStart next change from main",
+          stdout: "tlmkkspu\t\t\tjjacks",
           stderr: "",
           exitCode: 0
         };
@@ -208,7 +208,7 @@ describe("JjService.createBookmark", () => {
 
       if (args[0] === "log" && args[1] === "-r" && args[2] === "@") {
         return {
-          stdout: "feat/base\tfeat/base",
+          stdout: "bbb222\tfeat/base\tfeat/base\tjjacks",
           stderr: "",
           exitCode: 0
         };

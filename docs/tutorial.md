@@ -117,6 +117,67 @@ You need:
 - `gh` auth that can create and edit pull requests
 - `advance-bookmarks.enabled = true`
 
+## Config
+
+`jjacks` reads its settings from JJ config instead of a separate `.jjacks.config.js` file.
+
+That means you can use JJ's normal config scopes:
+
+- user
+- repo
+- workspace
+
+To see the exact config file path JJ is using for a given scope:
+
+```bash
+jj config path --user
+jj config path --repo
+jj config path --workspace
+```
+
+Typical JJ config locations:
+
+- user config on macOS: `$HOME/Library/Application Support/jj/config.toml`
+- repo config: `.jj/repo/config.toml`
+- workspace config: use `jj config path --workspace` for the current workspace
+
+`jjacks` follows JJ's normal config resolution, so the effective value is the same one you would get from `jj config get`.
+
+### Supported `jjacks` Keys
+
+#### `jjacks.stack_comments.location`
+
+Controls where `jjacks` writes the stack breadcrumb block for synced pull requests.
+
+Supported values:
+
+- `comment`
+- `description`
+
+Behavior:
+
+- `comment` writes the stack block as a dedicated PR comment
+- `description` writes the stack block into the PR description body and keeps it updated there
+
+Default:
+
+```toml
+[jjacks.stack_comments]
+location = "comment"
+```
+
+Set it with JJ:
+
+```bash
+jj config set --user jjacks.stack_comments.location description
+```
+
+Or at repo scope:
+
+```bash
+jj config set --repo jjacks.stack_comments.location description
+```
+
 ## Common Flow
 
 ### 1. Start from clean trunk

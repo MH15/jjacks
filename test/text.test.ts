@@ -62,7 +62,8 @@ describe("renderSyncPreview", () => {
             title: "feat/base",
             headRefName: "feat/base",
             baseRefName: "main",
-            isDraft: false
+            isDraft: false,
+            body: ""
           },
           remoteBranchExists: true,
           needsBookmarkPush: false,

@@ -3,7 +3,7 @@ import { Cause, Effect, Layer } from "effect";
 
 import type { PullRequestComment, RepoInfo, StackEntry } from "../src/domain";
 import { CliError } from "../src/errors";
-import { buildSyncPlanFromStatus, renderStackComment, stackCommentMarker } from "../src/stack";
+import { buildSyncPlanFromStatus, renderStackComment, stackCommentMarker, upsertStackCommentInBody } from "../src/stack";
 import { orderStackNodes } from "../src/services/JjService";
 import { GitService } from "../src/services/GitService";
 import { GitHubService } from "../src/services/GitHubService";
@@ -57,6 +57,7 @@ const makeLayer = (options?: {
       headRefName: string;
       baseRefName: string;
       isDraft: boolean;
+      body: string;
     }
   >([
     [
@@ -67,7 +68,8 @@ const makeLayer = (options?: {
         title: "feat/base",
         headRefName: "feat/base",
         baseRefName: "main",
-        isDraft: false
+        isDraft: false,
+        body: ""
       }
     ]
   ]);
@@ -79,7 +81,8 @@ const makeLayer = (options?: {
       title: options.existingChildPr.title,
       headRefName: "feat/ui",
       baseRefName: options.existingChildPr.baseRefName,
-      isDraft: false
+      isDraft: false,
+      body: ""
     });
   }
   const createdPullRequests: Array<string> = [];
@@ -101,6 +104,7 @@ const makeLayer = (options?: {
 
   const jjLayer = Layer.succeed(JjService, {
     ensureAdvanceBookmarksEnabled: Effect.void,
+    getStackCommentLocation: Effect.succeed("comment" as const),
     getCurrentStack: Effect.succeed(stack),
     getTrackedBookmarks: Effect.succeed(stack),
     ensureBookmarkDescription: (bookmarkName: string) =>
@@ -138,20 +142,22 @@ const makeLayer = (options?: {
           title,
           headRefName: headBranch,
           baseRefName: baseBranch,
-          isDraft: false
+          isDraft: false,
+          body: ""
         };
         pullRequests.set(headBranch, created);
         createdPullRequests.push(headBranch);
         return created;
       }),
-    updatePullRequest: ({ number, baseBranch, title }) =>
+    updatePullRequest: ({ number, baseBranch, title, body }) =>
       Effect.sync(() => {
         for (const [headBranch, pr] of pullRequests.entries()) {
           if (pr.number === number) {
             pullRequests.set(headBranch, {
               ...pr,
               baseRefName: baseBranch ?? pr.baseRefName,
-              title: title ?? pr.title
+              title: title ?? pr.title,
+              body: body ?? pr.body
             });
             updatedPullRequests.push(number);
             return;
@@ -271,6 +277,7 @@ describe("StackService with injected fakes", () => {
   it("supports an empty active stack without treating it as an error", async () => {
     const jjLayer = Layer.succeed(JjService, {
       ensureAdvanceBookmarksEnabled: Effect.void,
+      getStackCommentLocation: Effect.succeed("comment" as const),
       getCurrentStack: Effect.succeed([]),
       getTrackedBookmarks: Effect.succeed([]),
       ensureBookmarkDescription: () => Effect.void,
@@ -355,6 +362,7 @@ describe("StackService with injected fakes", () => {
 
     const jjLayer = Layer.succeed(JjService, {
       ensureAdvanceBookmarksEnabled: Effect.void,
+      getStackCommentLocation: Effect.succeed("comment" as const),
       getCurrentStack: Effect.succeed([]),
       getTrackedBookmarks: Effect.succeed(trackedBookmarks),
       ensureBookmarkDescription: () => Effect.void,
@@ -488,6 +496,7 @@ describe("StackService with injected fakes", () => {
 
     const jjLayer = Layer.succeed(JjService, {
       ensureAdvanceBookmarksEnabled: Effect.void,
+      getStackCommentLocation: Effect.succeed("comment" as const),
       getCurrentStack: Effect.sync(() => currentStack),
       getTrackedBookmarks: Effect.sync(() => currentStack),
       ensureBookmarkDescription: (bookmarkName: string) =>
@@ -521,6 +530,7 @@ describe("StackService with injected fakes", () => {
         headRefName: string;
         baseRefName: string;
         isDraft: boolean;
+        body: string;
       }
     >();
     const githubLayer = Layer.succeed(GitHubService, {
@@ -535,11 +545,12 @@ describe("StackService with injected fakes", () => {
           const created = {
             number: 13,
             url: "https://github.com/MH15/jjacks/pull/13",
-            title,
-            headRefName: headBranch,
-            baseRefName: baseBranch,
-            isDraft: false
-          };
+          title,
+          headRefName: headBranch,
+          baseRefName: baseBranch,
+          isDraft: false,
+          body: ""
+        };
           pullRequests.set(headBranch, created);
           return created;
         }),
@@ -595,6 +606,7 @@ describe("StackService with injected fakes", () => {
   it("fails before PR creation when a bookmark still is not published after pushing", async () => {
     const jjLayer = Layer.succeed(JjService, {
       ensureAdvanceBookmarksEnabled: Effect.void,
+      getStackCommentLocation: Effect.succeed("comment" as const),
       getCurrentStack: Effect.succeed([
         {
           name: "feat/ui",
@@ -711,6 +723,7 @@ describe("StackService with injected fakes", () => {
     const createdPullRequests: Array<string> = [];
     const jjLayer = Layer.succeed(JjService, {
       ensureAdvanceBookmarksEnabled: Effect.void,
+      getStackCommentLocation: Effect.succeed("comment" as const),
       getCurrentStack: Effect.succeed(emptyParentStack),
       getTrackedBookmarks: Effect.succeed(emptyParentStack),
       ensureBookmarkDescription: () => Effect.void,
@@ -741,7 +754,8 @@ describe("StackService with injected fakes", () => {
             title,
             headRefName: headBranch,
             baseRefName: baseBranch,
-            isDraft: false
+            isDraft: false,
+            body: ""
           };
         }),
       updatePullRequest: () => Effect.void,
@@ -816,7 +830,8 @@ describe("buildSyncPlanFromStatus", () => {
             title: "mh/inquirer",
             headRefName: "mh/inquirer",
             baseRefName: "mh/refrehs-fixes",
-            isDraft: false
+            isDraft: false,
+            body: ""
           },
           remoteBranchExists: true,
           needsBookmarkPush: true
@@ -837,7 +852,8 @@ describe("buildSyncPlanFromStatus", () => {
             title: "mh/ancestors",
             headRefName: "mh/ancestors",
             baseRefName: "mh/inquirer",
-            isDraft: false
+            isDraft: false,
+            body: ""
           },
           remoteBranchExists: true,
           needsBookmarkPush: true
@@ -871,7 +887,8 @@ describe("buildSyncPlanFromStatus", () => {
             title: "mh/base",
             headRefName: "mh/base",
             baseRefName: "main",
-            isDraft: false
+            isDraft: false,
+            body: ""
           },
           remoteBranchExists: true,
           needsBookmarkPush: false
@@ -892,7 +909,8 @@ describe("buildSyncPlanFromStatus", () => {
             title: "mh/alias",
             headRefName: "mh/alias",
             baseRefName: "mh/base",
-            isDraft: false
+            isDraft: false,
+            body: ""
           },
           remoteBranchExists: true,
           needsBookmarkPush: false
@@ -913,7 +931,8 @@ describe("buildSyncPlanFromStatus", () => {
             title: "mh/timing",
             headRefName: "mh/timing",
             baseRefName: "mh/base",
-            isDraft: false
+            isDraft: false,
+            body: ""
           },
           remoteBranchExists: true,
           needsBookmarkPush: false
@@ -1017,7 +1036,8 @@ describe("renderStackComment", () => {
           title: "feat/base",
           headRefName: "feat/base",
           baseRefName: "main",
-          isDraft: false
+          isDraft: false,
+          body: ""
         },
         remoteBranchExists: true,
         needsBookmarkPush: false
@@ -1046,7 +1066,8 @@ describe("renderStackComment", () => {
             title: "feat/base",
             headRefName: "feat/base",
             baseRefName: "main",
-            isDraft: false
+            isDraft: false,
+            body: ""
           },
           remoteBranchExists: true,
           needsBookmarkPush: false
@@ -1059,7 +1080,8 @@ describe("renderStackComment", () => {
             title: "feat/ui",
             headRefName: "feat/ui",
             baseRefName: "feat/base",
-            isDraft: false
+            isDraft: false,
+            body: ""
           },
           remoteBranchExists: true,
           needsBookmarkPush: false
@@ -1087,7 +1109,8 @@ describe("renderStackComment", () => {
             title: "feat/base",
             headRefName: "feat/base",
             baseRefName: "main",
-            isDraft: false
+            isDraft: false,
+            body: ""
           },
           remoteBranchExists: true,
           needsBookmarkPush: false
@@ -1103,7 +1126,8 @@ describe("renderStackComment", () => {
             title: "feat/ui",
             headRefName: "feat/ui",
             baseRefName: "feat/base",
-            isDraft: false
+            isDraft: false,
+            body: ""
           },
           remoteBranchExists: true,
           needsBookmarkPush: false
@@ -1124,7 +1148,8 @@ describe("renderStackComment", () => {
             title: "feat/api",
             headRefName: "feat/api",
             baseRefName: "feat/ui",
-            isDraft: false
+            isDraft: false,
+            body: ""
           },
           remoteBranchExists: true,
           needsBookmarkPush: false
@@ -1155,7 +1180,8 @@ describe("renderStackComment", () => {
           title: "mh/base",
           headRefName: "mh/base",
           baseRefName: "main",
-          isDraft: false
+          isDraft: false,
+          body: ""
         },
         remoteBranchExists: true,
         needsBookmarkPush: false
@@ -1176,7 +1202,8 @@ describe("renderStackComment", () => {
           title: "mh/alias",
           headRefName: "mh/alias",
           baseRefName: "mh/base",
-          isDraft: false
+          isDraft: false,
+          body: ""
         },
         remoteBranchExists: true,
         needsBookmarkPush: false
@@ -1197,7 +1224,8 @@ describe("renderStackComment", () => {
           title: "mh/timing",
           headRefName: "mh/timing",
           baseRefName: "mh/base",
-          isDraft: false
+          isDraft: false,
+          body: ""
         },
         remoteBranchExists: true,
         needsBookmarkPush: false
@@ -1207,5 +1235,39 @@ describe("renderStackComment", () => {
     expect(comment).toContain("[#28](https://github.com/MH15/jjacks/pull/28) `mh/base`");
     expect(comment).toContain("  - [#29](https://github.com/MH15/jjacks/pull/29) `mh/alias`");
     expect(comment).toContain("  - **current** [#30](https://github.com/MH15/jjacks/pull/30) `mh/timing`");
+  });
+});
+
+describe("upsertStackCommentInBody", () => {
+  it("appends the stack block to an empty body", () => {
+    const body = upsertStackCommentInBody("", [
+      "<!-- jjacks:stack -->",
+      "hello",
+      "<!-- /jjacks:stack -->"
+    ].join("\n"));
+
+    expect(body).toContain("hello");
+    expect(body.startsWith("<!-- jjacks:stack -->")).toBe(true);
+  });
+
+  it("replaces an existing jjacks block without removing surrounding description text", () => {
+    const body = upsertStackCommentInBody(
+      [
+        "Human description.",
+        "",
+        "<!-- jjacks:stack -->",
+        "old stack",
+        "<!-- /jjacks:stack -->"
+      ].join("\n"),
+      [
+        "<!-- jjacks:stack -->",
+        "new stack",
+        "<!-- /jjacks:stack -->"
+      ].join("\n")
+    );
+
+    expect(body).toContain("Human description.");
+    expect(body).toContain("new stack");
+    expect(body).not.toContain("old stack");
   });
 });

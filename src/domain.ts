@@ -19,6 +19,7 @@ export interface PullRequestSummary {
   readonly headRefName: string;
   readonly baseRefName: string;
   readonly isDraft: boolean;
+  readonly body: string;
 }
 
 export interface PullRequestComment {
