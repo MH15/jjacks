@@ -6,6 +6,7 @@ import { Console, Effect, Layer, Option } from "effect";
 
 import { resolveDiffFormat } from "./diff";
 import { CliError } from "./errors";
+import { resolveBookmarkMovePlan } from "./navigation";
 import { renderRefreshSummary, resolveRefreshPlan } from "./refresh";
 import { buildSyncPlanFromStatus } from "./stack";
 import { resolveSyncMode } from "./sync-mode";
@@ -124,56 +125,68 @@ const runMoveCommand = <R>(
     yield* Console.log([`jjacks ${direction}`, "", "current jj state", workingCopyLog].join("\n"));
   });
 
-const resolveUpMove = Effect.gen(function* () {
+const noActiveBookmarkStackError = () =>
+  new CliError("No active bookmark stack found. Run `jjacks create <bookmark-name>` first.");
+
+const noTargetBookmarkError = (
+  direction: "up" | "down",
+  currentBookmarkName: string
+) =>
+  new CliError(
+    direction === "up"
+      ? `No child bookmarks found from ${currentBookmarkName}.`
+      : `No parent bookmark found from ${currentBookmarkName}.`
+  );
+
+const resolveBookmarkMove = (direction: "up" | "down") => Effect.gen(function* () {
   const jjService = yield* JjService;
   const trackedBookmarks = yield* jjService.getTrackedBookmarks;
-  const currentEntry = trackedBookmarks.find((entry) => entry.isCurrent);
+  const movePlan = resolveBookmarkMovePlan(direction, trackedBookmarks);
 
-  if (currentEntry === undefined) {
-    return jjService.moveUp;
+  switch (movePlan.kind) {
+    case "no-current-bookmark":
+      return yield* Effect.fail(noActiveBookmarkStackError());
+    case "no-target-bookmark":
+      return yield* Effect.fail(noTargetBookmarkError(direction, movePlan.currentBookmarkName));
+    case "move-to-bookmark":
+      return jjService.moveToBookmark(movePlan.bookmarkName);
+    case "choose-child-bookmark":
+      return Effect.gen(function* () {
+        yield* ensureInteractiveTerminal(`Moving up from ${movePlan.parentBookmarkName}`);
+        const selectedChildBookmark = yield* promptForChildBookmark(
+          movePlan.parentBookmarkName,
+          movePlan.childBookmarkNames
+        );
+        return yield* jjService.moveToBookmark(selectedChildBookmark);
+      });
   }
-
-  const childBookmarks = trackedBookmarks.filter((entry) => entry.parentBookmarkName === currentEntry.name);
-
-  if (childBookmarks.length <= 1) {
-    return jjService.moveUp;
-  }
-
-  return Effect.gen(function* () {
-    yield* ensureInteractiveTerminal(`Moving up from ${currentEntry.name}`);
-    const selectedChildBookmark = yield* promptForChildBookmark(
-      currentEntry.name,
-      childBookmarks.map((entry) => entry.name)
-    );
-    return yield* jjService.moveToBookmark(selectedChildBookmark);
-  });
 });
 
 const up = Command.make("up", {}, () =>
   Effect.gen(function* () {
-    const move = yield* resolveUpMove;
+    const move = yield* resolveBookmarkMove("up");
     yield* runMoveCommand("up", move);
   })
 ).pipe(Command.withDescription("Move up the current bookmark stack with `jj next`."));
 
 const u = Command.make("u", {}, () =>
   Effect.gen(function* () {
-    const move = yield* resolveUpMove;
+    const move = yield* resolveBookmarkMove("up");
     yield* runMoveCommand("up", move);
   })
 ).pipe(Command.withDescription("Alias for `up`."));
 
 const down = Command.make("down", {}, () =>
   Effect.gen(function* () {
-    const jjService = yield* JjService;
-    yield* runMoveCommand("down", jjService.moveDown);
+    const move = yield* resolveBookmarkMove("down");
+    yield* runMoveCommand("down", move);
   })
 ).pipe(Command.withDescription("Move down the current bookmark stack with `jj prev`."));
 
 const d = Command.make("d", {}, () =>
   Effect.gen(function* () {
-    const jjService = yield* JjService;
-    yield* runMoveCommand("down", jjService.moveDown);
+    const move = yield* resolveBookmarkMove("down");
+    yield* runMoveCommand("down", move);
   })
 ).pipe(Command.withDescription("Alias for `down`."));
 
