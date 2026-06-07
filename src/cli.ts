@@ -82,8 +82,7 @@ const create = Command.make("create", { bookmarkName }, ({ bookmarkName }) =>
     yield* Console.log(
       [
         `created bookmark ${bookmarkName}`,
-        "next:",
-        "  node dist/cli.js sync --dry-run"
+        "Next, make some changes then run jjacks sync."
       ].join("\n")
     );
   })
