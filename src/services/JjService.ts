@@ -25,11 +25,13 @@ export class JjService extends Context.Tag("JjService")<
     readonly moveUp: Effect.Effect<string, CliError, ProcessService>;
     readonly moveDown: Effect.Effect<string, CliError, ProcessService>;
     readonly syncBookmarkToRemote: (bookmarkName: string) => Effect.Effect<void, CliError, ProcessService>;
-    readonly continueWorkingCopyOnStack: (options: {
+    readonly editWorkingCopyOnStack: (options: {
       readonly rootBookmarkName: string;
       readonly currentBookmarkName: string;
       readonly defaultBranch: string;
-      readonly message: string;
+    }) => Effect.Effect<string, CliError, ProcessService>;
+    readonly editWorkingCopyOnBookmark: (options: {
+      readonly bookmarkName: string;
     }) => Effect.Effect<string, CliError, ProcessService>;
     readonly logBookmarks: (options: {
       readonly mode: "tree" | "active" | "bookmarks-only";
@@ -562,39 +564,34 @@ const make = {
       yield* process.run("jj", ["bookmark", "set", bookmarkName, "-r", `${bookmarkName}@origin`]);
     }),
 
-  continueWorkingCopyOnStack: ({
+  editWorkingCopyOnStack: ({
     rootBookmarkName,
     currentBookmarkName,
-    defaultBranch,
-    message
+    defaultBranch
   }: {
     readonly rootBookmarkName: string;
     readonly currentBookmarkName: string;
     readonly defaultBranch: string;
-    readonly message: string;
   }) =>
     Effect.gen(function* () {
       const process = yield* ProcessService;
       yield* ensureAdvanceBookmarksEnabled;
       yield* process.run("jj", ["rebase", "-s", rootBookmarkName, "-d", defaultBranch]);
-      const workingCopyState = yield* process.run("jj", ["log", "-r", "@ | @-", "-T", workingCopyStateTemplate, "--no-graph"]);
-      const [currentState, parentState] = workingCopyState.stdout
-        .split("\n")
-        .map((line) => parseWorkingCopyStateLine(line))
-        .filter((state): state is NonNullable<typeof state> => state !== null);
+      yield* process.run("jj", ["edit", currentBookmarkName]);
+      const summary = yield* process.run("jj", ["log", "-r", "@ | @-", "--no-graph"]);
+      return summary.stdout;
+    }),
 
-      const alreadyContinuing =
-        currentState !== undefined &&
-        parentState !== undefined &&
-        currentState.bookmarks.length === 0 &&
-        currentState.description === message &&
-        parentState.bookmarks.includes(currentBookmarkName);
-
-      if (!alreadyContinuing) {
-        yield* process.run("jj", ["new", currentBookmarkName, "-m", message]);
-      }
-
-      const summary = yield* process.run("jj", ["log", "-r", "@ | @- | @--", "--no-graph"]);
+  editWorkingCopyOnBookmark: ({
+    bookmarkName
+  }: {
+    readonly bookmarkName: string;
+  }) =>
+    Effect.gen(function* () {
+      const process = yield* ProcessService;
+      yield* ensureAdvanceBookmarksEnabled;
+      yield* process.run("jj", ["edit", bookmarkName]);
+      const summary = yield* process.run("jj", ["log", "-r", "@ | @-", "--no-graph"]);
       return summary.stdout;
     }),
 

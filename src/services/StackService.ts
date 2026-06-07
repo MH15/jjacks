@@ -2,7 +2,7 @@ import { Context, Effect, Layer } from "effect";
 
 import type { ExecuteSyncResult, StackStatusEntry, SyncPlan } from "../domain";
 import { CliError } from "../errors";
-import { buildSyncPlanFromStatus, isPullRequestOpen, renderStackComment, stackCommentMarker, upsertStackCommentInBody } from "../stack";
+import { analyzeReviewStack, buildSyncPlanFromStatus, isPullRequestOpen, renderStackComment, stackCommentMarker, upsertStackCommentInBody } from "../stack";
 import { GitService } from "./GitService";
 import { GitHubService } from "./GitHubService";
 import { JjService } from "./JjService";
@@ -169,25 +169,33 @@ const prepareSync = Effect.gen(function* () {
 const refreshLocalStack = Effect.gen(function* () {
   const repo = yield* RepoService;
   const jj = yield* JjService;
-  yield* repo.fetchOrigin;
   const repoInfo = yield* repo.getRepoInfo;
   const defaultBranch = repoInfo.defaultBranch ?? "main";
+  const initialEntries = yield* getCurrentStatusEntries;
+  const initialAnalysis = analyzeReviewStack(initialEntries, defaultBranch);
+
+  if (initialAnalysis.completionState === "empty") {
+    return {
+      defaultBranch,
+      entries: initialEntries
+    };
+  }
+
+  yield* repo.fetchOrigin;
   yield* jj.syncBookmarkToRemote(defaultBranch);
 
   const entries = yield* getCurrentStatusEntries;
-  const currentEntry = entries.find((entry) => entry.entry.isCurrent)?.entry;
-  const rootEntry = entries.find((entry) =>
-    entry.blockedBy === undefined &&
-    !(entry.entry.isEmpty === true && entry.pullRequest === null) &&
-    (entry.pullRequest === null || isPullRequestOpen(entry.pullRequest))
-  )?.entry;
+  const analysis = analyzeReviewStack(entries, defaultBranch);
 
-  if (rootEntry !== undefined && currentEntry !== undefined) {
-    yield* jj.continueWorkingCopyOnStack({
-      rootBookmarkName: rootEntry.name,
-      currentBookmarkName: currentEntry.name,
-      defaultBranch,
-      message: `Continue ${currentEntry.name}`
+  if (analysis.completionState === "stack-complete") {
+    yield* jj.editWorkingCopyOnBookmark({
+      bookmarkName: defaultBranch
+    });
+  } else if (analysis.rootSyncableEntry !== undefined && analysis.currentSyncableEntry !== undefined) {
+    yield* jj.editWorkingCopyOnStack({
+      rootBookmarkName: analysis.rootSyncableEntry.entry.name,
+      currentBookmarkName: analysis.currentSyncableEntry.entry.name,
+      defaultBranch: analysis.rootSyncableEntry.intendedBaseBranch
     });
   }
 
@@ -198,7 +206,7 @@ const refreshLocalStack = Effect.gen(function* () {
 });
 
 const syncableEntries = (entries: ReadonlyArray<StackStatusEntry>): ReadonlyArray<StackStatusEntry> =>
-  entries.filter((entry) => entry.blockedBy === undefined);
+  analyzeReviewStack(entries, "main").syncableEntries;
 
 const ensureSyncDescriptions = (entries: ReadonlyArray<StackStatusEntry>) =>
   Effect.gen(function* () {
@@ -252,16 +260,10 @@ const reconcileSyncPullRequests = ({
     const createdPullRequestBookmarks: Array<string> = [];
     const updatedPullRequestNumbers: Array<number> = [];
 
-    yield* Effect.forEach(refreshedPlan.stack, (planEntry) =>
+    const effectiveEntries = analyzeReviewStack(entries, defaultBranch).syncableEntries;
+
+    yield* Effect.forEach(refreshedPlan.githubActions, (planEntry) =>
       Effect.gen(function* () {
-        if (entries.find((entry) => entry.entry.name === planEntry.entry.name)?.blockedBy !== undefined) {
-          return;
-        }
-
-        if (planEntry.pullRequest === null && planEntry.entry.isEmpty === true) {
-          return;
-        }
-
         if (planEntry.pullRequest === null) {
           if (!planEntry.remoteBranchExists) {
             return yield* Effect.fail(
@@ -292,7 +294,7 @@ const reconcileSyncPullRequests = ({
           stackCommentLocation === "description"
             ? upsertStackCommentInBody(
                 planEntry.pullRequest.body,
-                renderStackComment(entries, planEntry.pullRequest.number)
+                renderStackComment(effectiveEntries, planEntry.pullRequest.number)
               )
             : undefined;
 
@@ -357,10 +359,8 @@ const syncStackComments = (entries: ReadonlyArray<StackStatusEntry>) =>
             return;
           }
 
-          const nextBody = upsertStackCommentInBody(
-            pullRequest.body,
-            renderStackComment(entries, pullRequest.number)
-          );
+          const entriesForComment = syncableEntries(entries);
+          const nextBody = upsertStackCommentInBody(pullRequest.body, renderStackComment(entriesForComment, pullRequest.number));
 
           if (nextBody === pullRequest.body) {
             return;
@@ -387,7 +387,7 @@ const syncStackComments = (entries: ReadonlyArray<StackStatusEntry>) =>
         if (pullRequest === null || !isPullRequestOpen(pullRequest)) {
           return;
         }
-        const stackComment = renderStackComment(entries, pullRequest.number);
+        const stackComment = renderStackComment(syncableEntries(entries), pullRequest.number);
 
         const outcome = yield* Effect.either(
           Effect.gen(function* () {
@@ -429,15 +429,16 @@ const syncStackComments = (entries: ReadonlyArray<StackStatusEntry>) =>
 const executeSync = Effect.gen(function* () {
   const prepared = yield* refreshLocalStack;
   const entries = prepared.entries;
-  if (entries.length === 0) {
+  const initialPlan = buildSyncPlanFromStatus(entries, prepared.defaultBranch);
+  if (initialPlan.completionState !== "active-stack") {
     return {
       pushedBookmarks: [],
       createdPullRequestBookmarks: [],
       updatedPullRequestNumbers: [],
       updatedCommentPullRequestNumbers: [],
       warnings: [],
-      plan: buildSyncPlanFromStatus([], prepared.defaultBranch),
-      statusEntries: []
+      plan: initialPlan,
+      statusEntries: entries
     } satisfies ExecuteSyncResult;
   }
 

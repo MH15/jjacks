@@ -330,20 +330,26 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
           {
             start: syncStepTitles.refresh,
             pending: pendingLabels(labels, 0),
-            done: ({ entries }) => `Refresh local stack (${entries.length} entr${entries.length === 1 ? "y" : "ies"})`
+            done: ({ entries, defaultBranch }) => {
+              const plan = buildSyncPlanFromStatus(entries, defaultBranch);
+              return plan.completionState === "stack-complete"
+                ? `Refresh local stack (continued from ${defaultBranch})`
+                : `Refresh local stack (${plan.githubActions.length} active entr${plan.githubActions.length === 1 ? "y" : "ies"})`;
+            }
           },
           stackService.refreshLocalStack
         );
 
-        if (prepared.entries.length === 0) {
+        const initialPlan = buildSyncPlanFromStatus(prepared.entries, prepared.defaultBranch);
+        if (initialPlan.completionState !== "active-stack") {
           const result = {
             pushedBookmarks: [],
             createdPullRequestBookmarks: [],
             updatedPullRequestNumbers: [],
             updatedCommentPullRequestNumbers: [],
             warnings: [],
-            plan: buildSyncPlanFromStatus([], prepared.defaultBranch),
-            statusEntries: []
+            plan: initialPlan,
+            statusEntries: prepared.entries
           };
           yield* Console.log(`${renderSyncPreview(result.plan, { color: renderColored })}\n\n${renderExecuteSummary(result)}`);
           return;
@@ -430,6 +436,10 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
     yield* Console.log(preview);
 
     if (mode === "dry-run") {
+      return;
+    }
+
+    if (!plan.hasExecutableWork) {
       return;
     }
 

@@ -3,7 +3,7 @@ import { Cause, Effect, Layer } from "effect";
 
 import type { PullRequestComment, RepoInfo, StackEntry } from "../src/domain";
 import { CliError } from "../src/errors";
-import { buildSyncPlanFromStatus, renderStackComment, stackCommentMarker, upsertStackCommentInBody } from "../src/stack";
+import { analyzeReviewStack, buildSyncPlanFromStatus, renderStackComment, stackCommentMarker, upsertStackCommentInBody } from "../src/stack";
 import { orderStackNodes, selectCurrentBookmarkTree } from "../src/services/JjService";
 import { GitService } from "../src/services/GitService";
 import { GitHubService } from "../src/services/GitHubService";
@@ -116,7 +116,8 @@ const makeLayer = (options?: {
     moveUp: Effect.succeed(""),
     moveDown: Effect.succeed(""),
     syncBookmarkToRemote: () => Effect.void,
-    continueWorkingCopyOnStack: () => Effect.succeed(""),
+    editWorkingCopyOnStack: () => Effect.succeed(""),
+    editWorkingCopyOnBookmark: () => Effect.succeed(""),
     diffCurrentStack: () => Effect.succeed("")
   });
 
@@ -240,20 +241,20 @@ describe("StackService with injected fakes", () => {
       }).pipe(Effect.provide(makeLayer().layer))
     );
 
-    expect(plan.stack).toHaveLength(2);
-    expect(plan.stack[0]).toMatchObject({
+    expect(plan.githubActions).toHaveLength(2);
+    expect(plan.githubActions[0]).toMatchObject({
       intendedBaseBranch: "main",
       remoteBranchExists: true,
       needsBookmarkPush: false
     });
-    expect(plan.stack[0]?.actions).not.toContainEqual(expect.stringContaining("create PR"));
-    expect(plan.stack[1]).toMatchObject({
+    expect(plan.githubActions[0]?.actions).not.toContainEqual(expect.stringContaining("create PR"));
+    expect(plan.githubActions[1]).toMatchObject({
       intendedBaseBranch: "feat/base",
       remoteBranchExists: false,
       needsBookmarkPush: true
     });
-    expect(plan.stack[1]?.actions).toContain("push bookmark");
-    expect(plan.stack[1]?.actions).toContain("create PR with base feat/base");
+    expect(plan.githubActions[1]?.actions).toContain("push bookmark");
+    expect(plan.githubActions[1]?.actions).toContain("create PR with base feat/base");
   });
 
   it("returns repo-scoped status entries with PR lookup results", async () => {
@@ -285,7 +286,8 @@ describe("StackService with injected fakes", () => {
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
-      continueWorkingCopyOnStack: () => Effect.succeed(""),
+      editWorkingCopyOnStack: () => Effect.succeed(""),
+      editWorkingCopyOnBookmark: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.die("diffCurrentStack should not be used in this test.")
     });
 
@@ -338,7 +340,7 @@ describe("StackService with injected fakes", () => {
     );
 
     expect(status.entries).toEqual([]);
-    expect(plan.stack).toEqual([]);
+    expect(plan.githubActions).toEqual([]);
     expect(result.statusEntries).toEqual([]);
     expect(result.createdPullRequestBookmarks).toEqual([]);
     expect(result.pushedBookmarks).toEqual([]);
@@ -369,7 +371,8 @@ describe("StackService with injected fakes", () => {
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
-      continueWorkingCopyOnStack: () => Effect.succeed(""),
+      editWorkingCopyOnStack: () => Effect.succeed(""),
+      editWorkingCopyOnBookmark: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.die("diffCurrentStack should not be used in this test.")
     });
 
@@ -422,11 +425,237 @@ describe("StackService with injected fakes", () => {
     );
 
     expect(status.entries).toEqual([]);
-    expect(plan.stack).toEqual([]);
+    expect(plan.githubActions).toEqual([]);
     expect(result.statusEntries).toEqual([]);
     expect(result.createdPullRequestBookmarks).toEqual([]);
     expect(result.pushedBookmarks).toEqual([]);
     expect(result.warnings).toEqual([]);
+  });
+
+  it("moves back to a trunk continuation and skips GitHub work when only merged entries remain", async () => {
+    const currentStack: ReadonlyArray<StackEntry> = [
+      {
+        name: "fix/merged-parent-retarget",
+        changeId: "aaa111",
+        commitId: "111aaa",
+        description: "fix/merged-parent-retarget",
+        parentBookmarkName: undefined,
+        branchName: "fix/merged-parent-retarget",
+        isCurrent: true
+      }
+    ];
+    const editedBookmarks: Array<string> = [];
+
+    const jjLayer = Layer.succeed(JjService, {
+      ensureAdvanceBookmarksEnabled: Effect.void,
+      getStackCommentLocation: Effect.succeed("comment" as const),
+      getCurrentStack: Effect.succeed(currentStack),
+      getCurrentTree: Effect.succeed(currentStack),
+      getTrackedBookmarks: Effect.succeed(currentStack),
+      ensureBookmarkDescription: () => Effect.die("ensureBookmarkDescription should not run for a completed stack."),
+      createBookmark: () => Effect.void,
+      moveUp: Effect.succeed(""),
+      moveDown: Effect.succeed(""),
+      syncBookmarkToRemote: () => Effect.void,
+      editWorkingCopyOnStack: () => Effect.die("editWorkingCopyOnStack should not run for a completed stack."),
+      editWorkingCopyOnBookmark: ({ bookmarkName }) =>
+        Effect.sync(() => {
+          editedBookmarks.push(bookmarkName);
+          return "";
+        }),
+      diffCurrentStack: () => Effect.succeed("")
+    });
+
+    const repoLayer = Layer.succeed(RepoService, {
+      fetchOrigin: Effect.void,
+      getRepoInfo: Effect.succeed(repoInfo)
+    });
+
+    const githubLayer = Layer.succeed(GitHubService, {
+      findPullRequestsByHeads: () =>
+        Effect.succeed(
+          new Map([
+            [
+              "fix/merged-parent-retarget",
+              {
+                number: 58,
+                url: "https://github.com/MH15/jjacks/pull/58",
+                title: "fix/merged-parent-retarget",
+                headRefName: "fix/merged-parent-retarget",
+                baseRefName: "main",
+                state: "MERGED",
+                isDraft: false,
+                body: ""
+              }
+            ]
+          ])
+        ),
+      findPullRequestByHead: () => Effect.die("findPullRequestByHead should not run in batch mode."),
+      createPullRequest: () => Effect.die("createPullRequest should not run for a completed stack."),
+      updatePullRequest: () => Effect.die("updatePullRequest should not run for a completed stack."),
+      listIssueComments: () => Effect.die("listIssueComments should not run for a completed stack."),
+      createIssueComment: () => Effect.die("createIssueComment should not run for a completed stack."),
+      updateIssueComment: () => Effect.die("updateIssueComment should not run for a completed stack.")
+    });
+
+    const gitLayer = Layer.succeed(GitService, {
+      getBookmarksRemoteState: (bookmarkNames: ReadonlyArray<string>) =>
+        Effect.succeed(new Map(bookmarkNames.map((bookmarkName) => [
+          bookmarkName,
+          {
+            remoteBranchExists: true,
+            needsBookmarkPush: false
+          }
+        ]))),
+      getBookmarkRemoteState: () => Effect.die("getBookmarkRemoteState should not run in batch mode."),
+      pushBookmarks: () => Effect.die("pushBookmarks should not run for a completed stack."),
+      pushBookmark: () => Effect.die("pushBookmark should not run for a completed stack.")
+    });
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const stackService = yield* StackService;
+        return yield* stackService.executeSync;
+      }).pipe(Effect.provide(Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, StackServiceLive)))
+    );
+
+    expect(editedBookmarks).toEqual(["main"]);
+    expect(result.plan.completionState).toBe("stack-complete");
+    expect(result.plan.githubActions).toEqual([]);
+    expect(result.createdPullRequestBookmarks).toEqual([]);
+    expect(result.updatedPullRequestNumbers).toEqual([]);
+    expect(result.updatedCommentPullRequestNumbers).toEqual([]);
+  });
+
+  it("rebases and retargets a child whose merged parent was pruned from the effective stack", async () => {
+    const currentStack: ReadonlyArray<StackEntry> = [
+      {
+        name: "remove-refresh",
+        changeId: "aaa111",
+        commitId: "111aaa",
+        description: "remove-refresh",
+        parentBookmarkName: undefined,
+        branchName: "remove-refresh",
+        isCurrent: false
+      },
+      {
+        name: "fix/create-next-copy",
+        changeId: "bbb222",
+        commitId: "222bbb",
+        description: "fix/create-next-copy",
+        parentBookmarkName: "remove-refresh",
+        branchName: "fix/create-next-copy",
+        isCurrent: true
+      }
+    ];
+    const editStackCalls: Array<{
+      readonly rootBookmarkName: string;
+      readonly currentBookmarkName: string;
+      readonly defaultBranch: string;
+    }> = [];
+    const updatedBases: Array<string> = [];
+
+    const jjLayer = Layer.succeed(JjService, {
+      ensureAdvanceBookmarksEnabled: Effect.void,
+      getStackCommentLocation: Effect.succeed("comment" as const),
+      getCurrentStack: Effect.succeed(currentStack),
+      getCurrentTree: Effect.succeed(currentStack),
+      getTrackedBookmarks: Effect.succeed(currentStack),
+      ensureBookmarkDescription: () => Effect.void,
+      createBookmark: () => Effect.void,
+      moveUp: Effect.succeed(""),
+      moveDown: Effect.succeed(""),
+      syncBookmarkToRemote: () => Effect.void,
+      editWorkingCopyOnStack: ({ rootBookmarkName, currentBookmarkName, defaultBranch }) =>
+        Effect.sync(() => {
+          editStackCalls.push({ rootBookmarkName, currentBookmarkName, defaultBranch });
+          return "";
+        }),
+      editWorkingCopyOnBookmark: () => Effect.die("editWorkingCopyOnBookmark should not run with an active child."),
+      diffCurrentStack: () => Effect.succeed("")
+    });
+
+    const repoLayer = Layer.succeed(RepoService, {
+      fetchOrigin: Effect.void,
+      getRepoInfo: Effect.succeed(repoInfo)
+    });
+
+    const githubLayer = Layer.succeed(GitHubService, {
+      findPullRequestsByHeads: () =>
+        Effect.succeed(
+          new Map([
+            [
+              "remove-refresh",
+              {
+                number: 56,
+                url: "https://github.com/MH15/jjacks/pull/56",
+                title: "remove-refresh",
+                headRefName: "remove-refresh",
+                baseRefName: "main",
+                state: "MERGED",
+                isDraft: false,
+                body: ""
+              }
+            ],
+            [
+              "fix/create-next-copy",
+              {
+                number: 57,
+                url: "https://github.com/MH15/jjacks/pull/57",
+                title: "fix/create-next-copy",
+                headRefName: "fix/create-next-copy",
+                baseRefName: "remove-refresh",
+                state: "OPEN",
+                isDraft: false,
+                body: ""
+              }
+            ]
+          ])
+        ),
+      findPullRequestByHead: () => Effect.die("findPullRequestByHead should not run in batch mode."),
+      createPullRequest: () => Effect.die("createPullRequest should not run for an existing PR."),
+      updatePullRequest: ({ baseBranch }) =>
+        Effect.sync(() => {
+          if (baseBranch !== undefined) {
+            updatedBases.push(baseBranch);
+          }
+        }),
+      listIssueComments: () => Effect.succeed([]),
+      createIssueComment: () => Effect.void,
+      updateIssueComment: () => Effect.void
+    });
+
+    const gitLayer = Layer.succeed(GitService, {
+      getBookmarksRemoteState: (bookmarkNames: ReadonlyArray<string>) =>
+        Effect.succeed(new Map(bookmarkNames.map((bookmarkName) => [
+          bookmarkName,
+          {
+            remoteBranchExists: true,
+            needsBookmarkPush: false
+          }
+        ]))),
+      getBookmarkRemoteState: () => Effect.die("getBookmarkRemoteState should not run in batch mode."),
+      pushBookmarks: () => Effect.void,
+      pushBookmark: () => Effect.void
+    });
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const stackService = yield* StackService;
+        return yield* stackService.executeSync;
+      }).pipe(Effect.provide(Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, StackServiceLive)))
+    );
+
+    expect(editStackCalls).toEqual([
+      {
+        rootBookmarkName: "fix/create-next-copy",
+        currentBookmarkName: "fix/create-next-copy",
+        defaultBranch: "main"
+      }
+    ]);
+    expect(updatedBases).toEqual(["main"]);
+    expect(result.plan.githubActions).toHaveLength(1);
+    expect(result.plan.githubActions[0]?.intendedBaseBranch).toBe("main");
   });
 
   it("pushes missing bookmarks during execute sync and refreshes status", async () => {
@@ -508,7 +737,8 @@ describe("StackService with injected fakes", () => {
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
-      continueWorkingCopyOnStack: () => Effect.succeed(""),
+      editWorkingCopyOnStack: () => Effect.succeed(""),
+      editWorkingCopyOnBookmark: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.succeed("")
     });
 
@@ -641,7 +871,8 @@ describe("StackService with injected fakes", () => {
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
-      continueWorkingCopyOnStack: () => Effect.succeed(""),
+      editWorkingCopyOnStack: () => Effect.succeed(""),
+      editWorkingCopyOnBookmark: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.succeed("")
     });
 
@@ -737,7 +968,8 @@ describe("StackService with injected fakes", () => {
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
-      continueWorkingCopyOnStack: () => Effect.succeed(""),
+      editWorkingCopyOnStack: () => Effect.succeed(""),
+      editWorkingCopyOnBookmark: () => Effect.succeed(""),
       diffCurrentStack: () => Effect.succeed("")
     });
 
@@ -806,8 +1038,9 @@ describe("StackService with injected fakes", () => {
       }).pipe(Effect.provide(Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive)))
     );
 
-    expect(result.plan.stack[0]?.actions).toContain("empty change; skipping PR creation until it has commits");
-    expect(result.plan.stack[1]?.intendedBaseBranch).toBe("main");
+    expect(result.plan.githubActions).toHaveLength(1);
+    expect(result.plan.githubActions[0]?.entry.name).toBe("mh/optimize");
+    expect(result.plan.githubActions[0]?.intendedBaseBranch).toBe("main");
     expect(result.pushedBookmarks).toEqual(["mh/optimize"]);
     expect(result.createdPullRequestBookmarks).toEqual(["mh/optimize"]);
     expect(createdPullRequests).toEqual(["mh/optimize:main:mh/optimize"]);
@@ -815,6 +1048,145 @@ describe("StackService with injected fakes", () => {
 });
 
 describe("buildSyncPlanFromStatus", () => {
+  it("classifies closed PRs as pruned and retargets their children to main", () => {
+    const plan = buildSyncPlanFromStatus(
+      [
+        {
+          entry: {
+            name: "feat/abandoned",
+            changeId: "aaa111",
+            commitId: "111aaa",
+            description: "feat/abandoned",
+            parentBookmarkName: undefined,
+            branchName: "feat/abandoned",
+            isCurrent: false
+          },
+          pullRequest: {
+            number: 31,
+            url: "https://github.com/MH15/jjacks/pull/31",
+            title: "feat/abandoned",
+            headRefName: "feat/abandoned",
+            baseRefName: "main",
+            state: "CLOSED",
+            isDraft: false,
+            body: ""
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: false
+        },
+        {
+          entry: {
+            name: "feat/survivor",
+            changeId: "bbb222",
+            commitId: "222bbb",
+            description: "feat/survivor",
+            parentBookmarkName: "feat/abandoned",
+            branchName: "feat/survivor",
+            isCurrent: true
+          },
+          pullRequest: {
+            number: 32,
+            url: "https://github.com/MH15/jjacks/pull/32",
+            title: "feat/survivor",
+            headRefName: "feat/survivor",
+            baseRefName: "feat/abandoned",
+            state: "OPEN",
+            isDraft: false,
+            body: ""
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: false
+        }
+      ],
+      "main"
+    );
+
+    expect(plan.closedEntries[0]?.actions).toContain("PR #31 is closed; removed from active stack");
+    expect(plan.githubActions).toHaveLength(1);
+    expect(plan.githubActions[0]?.intendedBaseBranch).toBe("main");
+    expect(plan.githubActions[0]?.actions).toContain("retarget PR #32 base from feat/abandoned to main");
+  });
+
+  it("keeps a clean sibling syncable when a conflicted sibling subtree is blocked", () => {
+    const analysis = analyzeReviewStack(
+      [
+        {
+          entry: {
+            name: "feat/base",
+            changeId: "aaa111",
+            commitId: "111aaa",
+            description: "feat/base",
+            parentBookmarkName: undefined,
+            branchName: "feat/base",
+            isCurrent: false
+          },
+          pullRequest: {
+            number: 40,
+            url: "https://github.com/MH15/jjacks/pull/40",
+            title: "feat/base",
+            headRefName: "feat/base",
+            baseRefName: "main",
+            state: "OPEN",
+            isDraft: false,
+            body: ""
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: false
+        },
+        {
+          entry: {
+            name: "feat/conflict",
+            changeId: "bbb222",
+            commitId: "222bbb",
+            description: "feat/conflict",
+            parentBookmarkName: "feat/base",
+            branchName: "feat/conflict",
+            isCurrent: false,
+            hasConflict: true
+          },
+          pullRequest: null,
+          remoteBranchExists: false,
+          needsBookmarkPush: true,
+          blockedBy: "feat/conflict"
+        },
+        {
+          entry: {
+            name: "feat/child",
+            changeId: "ccc333",
+            commitId: "333ccc",
+            description: "feat/child",
+            parentBookmarkName: "feat/conflict",
+            branchName: "feat/child",
+            isCurrent: false
+          },
+          pullRequest: null,
+          remoteBranchExists: false,
+          needsBookmarkPush: true,
+          blockedBy: "feat/conflict"
+        },
+        {
+          entry: {
+            name: "feat/clean",
+            changeId: "ddd444",
+            commitId: "444ddd",
+            description: "feat/clean",
+            parentBookmarkName: "feat/base",
+            branchName: "feat/clean",
+            isCurrent: true
+          },
+          pullRequest: null,
+          remoteBranchExists: false,
+          needsBookmarkPush: true
+        }
+      ],
+      "main"
+    );
+
+    expect(analysis.blockedEntries.map((entry) => entry.entry.name)).toEqual(["feat/conflict", "feat/child"]);
+    expect(analysis.syncableEntries.map((entry) => entry.entry.name)).toEqual(["feat/base", "feat/clean"]);
+    expect(analysis.currentSyncableEntry?.entry.name).toBe("feat/clean");
+  });
+
   it("retargets the surviving bottom PR to main after a merged lower layer disappears", () => {
     const plan = buildSyncPlanFromStatus(
       [
@@ -870,12 +1242,12 @@ describe("buildSyncPlanFromStatus", () => {
       "fetch origin",
       "move main to main@origin",
       "rebase mh/inquirer onto main",
-      "continue from mh/ancestors"
+      "edit mh/ancestors"
     ]);
-    expect(plan.stack[0]?.intendedBaseBranch).toBe("main");
-    expect(plan.stack[0]?.actions).toContain("retarget PR #17 base from mh/refrehs-fixes to main");
-    expect(plan.stack[1]?.intendedBaseBranch).toBe("mh/inquirer");
-    expect(plan.stack[1]?.actions).not.toContain(expect.stringContaining("retarget PR #18"));
+    expect(plan.githubActions[0]?.intendedBaseBranch).toBe("main");
+    expect(plan.githubActions[0]?.actions).toContain("retarget PR #17 base from mh/refrehs-fixes to main");
+    expect(plan.githubActions[1]?.intendedBaseBranch).toBe("mh/inquirer");
+    expect(plan.githubActions[1]?.actions).not.toContain(expect.stringContaining("retarget PR #18"));
   });
 
   it("blocks a conflicted subtree from GitHub actions", () => {
@@ -924,12 +1296,13 @@ describe("buildSyncPlanFromStatus", () => {
       "main"
     );
 
-    expect(plan.stack[0]?.actions).toContain("blocked by local conflict; resolve before syncing this subtree");
-    expect(plan.stack[0]?.actions).not.toContain("push bookmark");
-    expect(plan.stack[0]?.actions).not.toContain(expect.stringContaining("retarget PR #12"));
-    expect(plan.stack[1]?.actions).toContain("blocked by local conflict in feat/base; resolve parent before syncing this subtree");
-    expect(plan.stack[1]?.actions).not.toContain("push bookmark");
-    expect(plan.stack[1]?.actions).not.toContain(expect.stringContaining("create PR"));
+    expect(plan.githubActions).toEqual([]);
+    expect(plan.blockedEntries[0]?.actions).toContain("blocked by local conflict; resolve before syncing this subtree");
+    expect(plan.blockedEntries[0]?.actions).not.toContain("push bookmark");
+    expect(plan.blockedEntries[0]?.actions).not.toContain(expect.stringContaining("retarget PR #12"));
+    expect(plan.blockedEntries[1]?.actions).toContain("blocked by local conflict in feat/base; resolve parent before syncing this subtree");
+    expect(plan.blockedEntries[1]?.actions).not.toContain("push bookmark");
+    expect(plan.blockedEntries[1]?.actions).not.toContain(expect.stringContaining("create PR"));
   });
 
   it("does not recreate or mutate merged pull requests", () => {
@@ -962,10 +1335,12 @@ describe("buildSyncPlanFromStatus", () => {
       "main"
     );
 
-    expect(plan.stack[0]?.actions).toContain("PR #55 is merged; skipping GitHub updates");
-    expect(plan.stack[0]?.actions).not.toContain("push bookmark");
-    expect(plan.stack[0]?.actions).not.toContain(expect.stringContaining("create PR"));
-    expect(plan.stack[0]?.actions).not.toContain(expect.stringContaining("retarget PR #55"));
+    expect(plan.completionState).toBe("stack-complete");
+    expect(plan.githubActions).toEqual([]);
+    expect(plan.landedEntries[0]?.actions).toContain("PR #55 is merged; removed from active stack");
+    expect(plan.landedEntries[0]?.actions).not.toContain("push bookmark");
+    expect(plan.landedEntries[0]?.actions).not.toContain(expect.stringContaining("create PR"));
+    expect(plan.landedEntries[0]?.actions).not.toContain(expect.stringContaining("retarget PR #55"));
   });
 
   it("retargets children of merged PRs to the nearest syncable base", () => {
@@ -1025,10 +1400,11 @@ describe("buildSyncPlanFromStatus", () => {
       "fetch origin",
       "move main to main@origin",
       "rebase fix/create-next-copy onto main",
-      "continue from fix/create-next-copy"
+      "edit fix/create-next-copy"
     ]);
-    expect(plan.stack[1]?.intendedBaseBranch).toBe("main");
-    expect(plan.stack[1]?.actions).toContain("retarget PR #57 base from remove-refresh to main");
+    expect(plan.githubActions).toHaveLength(1);
+    expect(plan.githubActions[0]?.intendedBaseBranch).toBe("main");
+    expect(plan.githubActions[0]?.actions).toContain("retarget PR #57 base from remove-refresh to main");
   });
 
   it("keeps sibling branches based on their shared bookmarked parent instead of chaining them together", () => {
@@ -1104,9 +1480,9 @@ describe("buildSyncPlanFromStatus", () => {
       "main"
     );
 
-    expect(plan.stack[1]?.intendedBaseBranch).toBe("mh/base");
-    expect(plan.stack[2]?.intendedBaseBranch).toBe("mh/base");
-    expect(plan.stack[2]?.actions).not.toContain(expect.stringContaining("retarget PR #30 base from mh/base to mh/alias"));
+    expect(plan.githubActions[1]?.intendedBaseBranch).toBe("mh/base");
+    expect(plan.githubActions[2]?.intendedBaseBranch).toBe("mh/base");
+    expect(plan.githubActions[2]?.actions).not.toContain(expect.stringContaining("retarget PR #30 base from mh/base to mh/alias"));
   });
 });
 

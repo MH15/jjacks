@@ -13,8 +13,8 @@ const makeProcessLayer = (
     run: (command: string, args: ReadonlyArray<string>) => Effect.succeed(responses(command, args))
   });
 
-describe("JjService.continueWorkingCopyOnStack", () => {
-  it("reuses the existing continuation change when already continuing from the stack tip", async () => {
+describe("JjService.editWorkingCopyOnStack", () => {
+  it("rebases the effective root and edits the current bookmark for amend-style work", async () => {
     const calls: Array<ReadonlyArray<string>> = [];
 
     const processLayer = makeProcessLayer((_command, args) => {
@@ -28,15 +28,11 @@ describe("JjService.continueWorkingCopyOnStack", () => {
         return { stdout: "", stderr: "", exitCode: 0 };
       }
 
-      if (args[0] === "log" && args[2] === "@ | @-") {
-        return {
-          stdout: "\tContinue feat/ui\nfeat/ui\tfeat/ui",
-          stderr: "",
-          exitCode: 0
-        };
+      if (args[0] === "edit") {
+        return { stdout: "", stderr: "", exitCode: 0 };
       }
 
-      if (args[0] === "log" && args[2] === "@ | @- | @--") {
+      if (args[0] === "log" && args[2] === "@ | @-") {
         return {
           stdout: "current summary",
           stderr: "",
@@ -54,20 +50,23 @@ describe("JjService.continueWorkingCopyOnStack", () => {
     const output = await Effect.runPromise(
       Effect.gen(function* () {
         const jjService = yield* JjService;
-        return yield* jjService.continueWorkingCopyOnStack({
+        return yield* jjService.editWorkingCopyOnStack({
           rootBookmarkName: "feat/base",
           currentBookmarkName: "feat/ui",
-          defaultBranch: "main",
-          message: "Continue feat/ui"
+          defaultBranch: "main"
         });
       }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive)))
     );
 
     expect(output).toBe("current summary");
+    expect(calls.some((args) => args.join(" ") === "rebase -s feat/base -d main")).toBe(true);
+    expect(calls.some((args) => args.join(" ") === "edit feat/ui")).toBe(true);
     expect(calls.some((args) => args[0] === "new")).toBe(false);
   });
+});
 
-  it("creates a new continuation change when currently positioned on the tip bookmark itself", async () => {
+describe("JjService.editWorkingCopyOnBookmark", () => {
+  it("edits the requested bookmark instead of creating a continuation", async () => {
     const calls: Array<ReadonlyArray<string>> = [];
 
     const processLayer = makeProcessLayer((_command, args) => {
@@ -77,13 +76,13 @@ describe("JjService.continueWorkingCopyOnStack", () => {
         return { stdout: "true", stderr: "", exitCode: 0 };
       }
 
-      if (args[0] === "rebase") {
+      if (args[0] === "edit") {
         return { stdout: "", stderr: "", exitCode: 0 };
       }
 
       if (args[0] === "log" && args[2] === "@ | @-") {
         return {
-          stdout: "feat/ui\tfeat/ui\nfeat/base\tfeat/base",
+          stdout: "current summary",
           stderr: "",
           exitCode: 0
         };
@@ -93,30 +92,21 @@ describe("JjService.continueWorkingCopyOnStack", () => {
         return { stdout: "", stderr: "", exitCode: 0 };
       }
 
-      if (args[0] === "log" && args[2] === "@ | @- | @--") {
-        return {
-          stdout: "current summary",
-          stderr: "",
-          exitCode: 0
-        };
-      }
-
       throw new Error(`Unexpected command: jj ${args.join(" ")}`);
     });
 
-    await Effect.runPromise(
+    const output = await Effect.runPromise(
       Effect.gen(function* () {
         const jjService = yield* JjService;
-        yield* jjService.continueWorkingCopyOnStack({
-          rootBookmarkName: "feat/base",
-          currentBookmarkName: "feat/ui",
-          defaultBranch: "main",
-          message: "Continue feat/ui"
+        return yield* jjService.editWorkingCopyOnBookmark({
+          bookmarkName: "main"
         });
       }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive)))
     );
 
-    expect(calls.some((args) => args.join(" ") === "new feat/ui -m Continue feat/ui")).toBe(true);
+    expect(output).toBe("current summary");
+    expect(calls.some((args) => args.join(" ") === "edit main")).toBe(true);
+    expect(calls.some((args) => args[0] === "new")).toBe(false);
   });
 });
 

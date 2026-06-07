@@ -5,7 +5,7 @@ import { renderExecuteSummary, renderStatus, renderSyncPreview } from "../src/te
 
 const plan: SyncPlan = {
   localActions: ["fetch origin", "move main to main@origin"],
-  stack: [
+  githubActions: [
     {
       entry: {
         name: "feat/base",
@@ -22,7 +22,12 @@ const plan: SyncPlan = {
       needsBookmarkPush: true,
       actions: ["push bookmark", "create PR with base main"]
     }
-  ]
+  ],
+  landedEntries: [],
+  closedEntries: [],
+  blockedEntries: [],
+  hasExecutableWork: true,
+  completionState: "active-stack"
 };
 
 const executeResult: ExecuteSyncResult = {
@@ -46,18 +51,58 @@ describe("renderSyncPreview", () => {
   });
 
   it("renders a friendly empty-state preview when there is no active stack", () => {
-    const output = renderSyncPreview({ localActions: [], stack: [] });
+    const output = renderSyncPreview({
+      localActions: [],
+      githubActions: [],
+      landedEntries: [],
+      closedEntries: [],
+      blockedEntries: [],
+      hasExecutableWork: false,
+      completionState: "empty"
+    });
 
     expect(output).toContain("no active bookmark stack");
     expect(output).toContain("jjacks create <bookmark-name>");
   });
 
+  it("renders completed entries outside of GitHub actions", () => {
+    const output = renderSyncPreview({
+      localActions: ["fetch origin", "move main to main@origin", "edit main"],
+      githubActions: [],
+      landedEntries: [
+        {
+          entry: plan.githubActions[0]!.entry,
+          pullRequest: {
+            number: 12,
+            url: "https://github.com/MH15/jjacks/pull/12",
+            title: "feat/base",
+            headRefName: "feat/base",
+            baseRefName: "main",
+            state: "MERGED",
+            isDraft: false,
+            body: ""
+          },
+          actions: ["PR #12 is merged; removed from active stack"]
+        }
+      ],
+      closedEntries: [],
+      blockedEntries: [],
+      hasExecutableWork: true,
+      completionState: "stack-complete"
+    });
+
+    expect(output).toContain("completed");
+    expect(output).toContain("No syncable stack remains.");
+    expect(output).toContain("next: jjacks create <bookmark-name>");
+    expect(output).not.toContain("github\nfeat/base");
+  });
+
   it("shows no changes for unchanged bookmarks", () => {
     const output = renderSyncPreview({
       localActions: [],
-      stack: [
+      githubActions: [
         {
-          ...plan.stack[0]!,
+          ...plan.githubActions[0]!,
           pullRequest: {
             number: 12,
             url: "https://github.com/MH15/jjacks/pull/12",
@@ -71,7 +116,12 @@ describe("renderSyncPreview", () => {
           needsBookmarkPush: false,
           actions: []
         }
-      ]
+      ],
+      landedEntries: [],
+      closedEntries: [],
+      blockedEntries: [],
+      hasExecutableWork: true,
+      completionState: "active-stack"
     });
 
     expect(output).toContain("feat/base (PR #12)");
@@ -94,6 +144,18 @@ describe("renderExecuteSummary", () => {
     const output = renderExecuteSummary(executeResult);
 
     expect(output).toContain("1 push, 1 PR, 1 comment");
+  });
+
+  it("pluralizes zero pushes correctly", () => {
+    const output = renderExecuteSummary({
+      ...executeResult,
+      pushedBookmarks: [],
+      createdPullRequestBookmarks: [],
+      updatedPullRequestNumbers: [],
+      updatedCommentPullRequestNumbers: []
+    });
+
+    expect(output).toContain("no pushes, no PRs, no comments");
   });
 
   it("includes warnings when non-fatal sync steps fail", () => {
