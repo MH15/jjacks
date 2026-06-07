@@ -117,3 +117,41 @@ describe("JjService.continueWorkingCopyOnStack", () => {
     expect(calls.some((args) => args.join(" ") === "new feat/ui -m Continue feat/ui")).toBe(true);
   });
 });
+
+describe("JjService.moveToBookmark", () => {
+  it("edits the working copy to the requested bookmark and returns the summary", async () => {
+    const calls: Array<ReadonlyArray<string>> = [];
+
+    const processLayer = makeProcessLayer((_command, args) => {
+      calls.push(args);
+
+      if (args[0] === "config") {
+        return { stdout: "true", stderr: "", exitCode: 0 };
+      }
+
+      if (args[0] === "edit") {
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+
+      if (args[0] === "log" && args[2] === "@ | @-") {
+        return {
+          stdout: "current summary",
+          stderr: "",
+          exitCode: 0
+        };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    const output = await Effect.runPromise(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        return yield* jjService.moveToBookmark("feat/ui");
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive)))
+    );
+
+    expect(output).toBe("current summary");
+    expect(calls.some((args) => args.join(" ") === "edit feat/ui")).toBe(true);
+  });
+});

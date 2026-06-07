@@ -19,6 +19,7 @@ export class JjService extends Context.Tag("JjService")<
       readonly bookmarkName: string;
       readonly message: string;
     }) => Effect.Effect<void, CliError, ProcessService>;
+    readonly moveToBookmark: (bookmarkName: string) => Effect.Effect<string, CliError, ProcessService>;
     readonly moveUp: Effect.Effect<string, CliError, ProcessService>;
     readonly moveDown: Effect.Effect<string, CliError, ProcessService>;
     readonly syncBookmarkToRemote: (bookmarkName: string) => Effect.Effect<void, CliError, ProcessService>;
@@ -290,6 +291,15 @@ const make = {
       yield* ensureAdvanceBookmarksEnabled;
       yield* process.run("jj", ["new", "-m", message]);
       yield* process.run("jj", ["bookmark", "create", bookmarkName]);
+    }),
+
+  moveToBookmark: (bookmarkName: string) =>
+    Effect.gen(function* () {
+      const process = yield* ProcessService;
+      yield* ensureAdvanceBookmarksEnabled;
+      yield* process.run("jj", ["edit", bookmarkName]);
+      const summary = yield* process.run("jj", ["log", "-r", "@ | @-", "--no-graph"]);
+      return summary.stdout;
     }),
 
   moveUp: Effect.gen(function* () {
