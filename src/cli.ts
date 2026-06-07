@@ -101,19 +101,19 @@ const ensureInteractiveTerminal = (action: string) =>
     ? Effect.fail(new CliError(`${action} requires an interactive terminal so you can choose from multiple child bookmarks.`))
     : Effect.void;
 
-const promptForChildBookmark = (parentBookmarkName: string, childBookmarkNames: ReadonlyArray<string>) =>
+const promptForBookmarkChoice = (message: string, bookmarkNames: ReadonlyArray<string>) =>
   Effect.tryPromise({
     try: () =>
       select({
-        message: `Choose the child bookmark to continue from ${parentBookmarkName}`,
-        choices: childBookmarkNames.map((childBookmarkName) => ({
-          name: childBookmarkName,
-          value: childBookmarkName
+        message,
+        choices: bookmarkNames.map((bookmarkName) => ({
+          name: bookmarkName,
+          value: bookmarkName
         }))
       }, {
         clearPromptOnDone: true
       }),
-    catch: (error) => promptError(`Choosing a child bookmark from ${parentBookmarkName}`, error)
+    catch: (error) => promptError(message, error)
   });
 
 const runMoveCommand = <R>(
@@ -153,11 +153,20 @@ const resolveBookmarkMove = (direction: "up" | "down") => Effect.gen(function* (
     case "choose-child-bookmark":
       return Effect.gen(function* () {
         yield* ensureInteractiveTerminal(`Moving up from ${movePlan.parentBookmarkName}`);
-        const selectedChildBookmark = yield* promptForChildBookmark(
-          movePlan.parentBookmarkName,
+        const selectedChildBookmark = yield* promptForBookmarkChoice(
+          `Choose the child bookmark to continue from ${movePlan.parentBookmarkName}`,
           movePlan.childBookmarkNames
         );
         return yield* jjService.moveToBookmark(selectedChildBookmark);
+      });
+    case "choose-root-bookmark":
+      return Effect.gen(function* () {
+        yield* ensureInteractiveTerminal("Moving up from main");
+        const selectedRootBookmark = yield* promptForBookmarkChoice(
+          "Choose the surviving bookmark stack to continue",
+          movePlan.rootBookmarkNames
+        );
+        return yield* jjService.moveToBookmark(selectedRootBookmark);
       });
   }
 });

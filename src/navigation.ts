@@ -19,6 +19,10 @@ export type BookmarkMovePlan =
       readonly kind: "choose-child-bookmark";
       readonly parentBookmarkName: string;
       readonly childBookmarkNames: ReadonlyArray<string>;
+    }
+  | {
+      readonly kind: "choose-root-bookmark";
+      readonly rootBookmarkNames: ReadonlyArray<string>;
     };
 
 export const resolveBookmarkMovePlan = (
@@ -26,6 +30,29 @@ export const resolveBookmarkMovePlan = (
   entries: ReadonlyArray<StackEntry>
 ): BookmarkMovePlan => {
   const currentEntry = entries.find((entry) => entry.isCurrent);
+  const entryNames = new Set(entries.map((entry) => entry.name));
+
+  if (currentEntry === undefined && direction === "up") {
+    const rootBookmarkNames = entries
+      .filter((entry) => entry.parentBookmarkName === undefined || !entryNames.has(entry.parentBookmarkName))
+      .map((entry) => entry.name);
+
+    if (rootBookmarkNames.length === 0) {
+      return { kind: "no-current-bookmark" };
+    }
+
+    if (rootBookmarkNames.length === 1) {
+      return {
+        kind: "move-to-bookmark",
+        bookmarkName: rootBookmarkNames[0]!
+      };
+    }
+
+    return {
+      kind: "choose-root-bookmark",
+      rootBookmarkNames
+    };
+  }
 
   if (currentEntry === undefined) {
     return { kind: "no-current-bookmark" };
