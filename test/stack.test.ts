@@ -1042,7 +1042,7 @@ describe("orderStackNodes", () => {
 });
 
 describe("selectCurrentBookmarkTree", () => {
-  it("includes sibling branches under the current tree root", () => {
+  it("keeps sibling branches in the current tree rooted at the current bookmark's top ancestor", () => {
     const entries: ReadonlyArray<StackEntry> = [
       {
         name: "feat/base",
@@ -1054,22 +1054,22 @@ describe("selectCurrentBookmarkTree", () => {
         isCurrent: false
       },
       {
-        name: "feat/left",
+        name: "feat/right",
         changeId: "bbb222",
         commitId: "222bbb",
-        description: "feat/left",
-        parentBookmarkName: "feat/base",
-        branchName: "feat/left",
-        isCurrent: false
-      },
-      {
-        name: "feat/right",
-        changeId: "ccc333",
-        commitId: "333ccc",
         description: "feat/right",
         parentBookmarkName: "feat/base",
         branchName: "feat/right",
         isCurrent: true
+      },
+      {
+        name: "feat/left",
+        changeId: "ccc333",
+        commitId: "333ccc",
+        description: "feat/left",
+        parentBookmarkName: "feat/base",
+        branchName: "feat/left",
+        isCurrent: false
       },
       {
         name: "other/root",
@@ -1087,7 +1087,6 @@ describe("selectCurrentBookmarkTree", () => {
     expect(selected.map((entry) => entry.name)).toEqual(["feat/base", "feat/right", "feat/left"]);
   });
 });
-
 describe("renderStackComment", () => {
   it("renders a stable comment body with current marker and pending PRs", () => {
     const comment = renderStackComment([

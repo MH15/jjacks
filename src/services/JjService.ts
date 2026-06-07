@@ -165,6 +165,7 @@ const stackTemplate =
 const descendantTemplate =
   `bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ change_id.short() ++ "\t" ++ commit_id.short() ++ "\t" ++ ` +
   `description.first_line() ++ "\t" ++ empty ++ "\t" ++ parents.map(|p| p.change_id().short()).join(",") ++ "\n"`;
+const trackedBookmarksRevset = "(::(bookmarks() & ~::trunk())) & ~::trunk()";
 
 const parseDescendantLine = (line: string): DescendantNode | null => {
   if (line.length === 0) {
@@ -339,17 +340,16 @@ const selectCurrentBookmarkTree = (
   entries: ReadonlyArray<StackEntryType>,
   currentBookmarkName: string | undefined
 ): ReadonlyArray<StackEntryType> => {
-  if (currentBookmarkName === undefined) {
+  if (entries.length === 0 || currentBookmarkName === undefined) {
     return [];
   }
 
   const byName = new Map(entries.map((entry) => [entry.name, entry] as const));
-  const currentEntry = byName.get(currentBookmarkName);
-  if (currentEntry === undefined) {
+  let rootEntry = byName.get(currentBookmarkName);
+  if (rootEntry === undefined) {
     return [];
   }
 
-  let rootEntry = currentEntry;
   while (rootEntry.parentBookmarkName !== undefined) {
     const parentEntry = byName.get(rootEntry.parentBookmarkName);
     if (parentEntry === undefined) {
@@ -395,10 +395,10 @@ const getTrackedBookmarks = Effect.gen(function* () {
   yield* ensureAdvanceBookmarksEnabled;
 
   const [descendants, currentPath] = yield* Effect.all([
-    process.run("jj", ["log", "-r", "descendants(trunk()) & ~trunk()", "-T", descendantTemplate, "--no-graph"], {
+    process.run("jj", ["log", "-r", trackedBookmarksRevset, "-T", descendantTemplate, "--no-graph"], {
       allowNonZeroExit: true
     }),
-    process.run("jj", ["log", "-r", "::@ & descendants(trunk())", "-T", descendantTemplate, "--no-graph"], {
+    process.run("jj", ["log", "-r", `::@ & ${trackedBookmarksRevset}`, "-T", descendantTemplate, "--no-graph"], {
       allowNonZeroExit: true
     })
   ]);
@@ -494,10 +494,11 @@ const getCurrentTree = Effect.gen(function* () {
   const currentBookmarkName = trackedBookmarks.find((entry) => entry.isCurrent)?.name;
   return selectCurrentBookmarkTree(trackedBookmarks, currentBookmarkName);
 });
-
 const make = {
   ensureAdvanceBookmarksEnabled,
   getStackCommentLocation,
+  getTrackedBookmarks,
+  getCurrentTree,
 
   ensureBookmarkDescription: (bookmarkName: string, description: string) =>
     Effect.gen(function* () {
@@ -641,8 +642,8 @@ const make = {
         mode === "active"
           ? "trunk()..@"
           : mode === "bookmarks-only"
-            ? "descendants(trunk()) & ::bookmarks() & ~trunk()"
-            : '(bookmarks() & descendants(main@origin) & ~main@origin) | main@origin';
+            ? trackedBookmarksRevset
+            : `${trackedBookmarksRevset} | trunk()`;
 
       const args = ["log", "-r", revset] as Array<string>;
       if (noGraph) {
@@ -679,11 +680,6 @@ const make = {
       const result = yield* process.run("jj", args);
       return result.stdout;
     }),
-
-  getTrackedBookmarks,
-
-  getCurrentTree,
-
   getCurrentStack: Effect.gen(function* () {
     const process = yield* ProcessService;
     yield* ensureAdvanceBookmarksEnabled;

@@ -60,8 +60,35 @@ describe("resolveBookmarkMovePlan", () => {
       makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base" })
     ];
 
-    expect(resolveBookmarkMovePlan("up", entries)).toEqual({
+    expect(resolveBookmarkMovePlan("down", entries)).toEqual({
       kind: "no-current-bookmark"
+    });
+
+    expect(resolveBookmarkMovePlan("up", [])).toEqual({
+      kind: "no-current-bookmark"
+    });
+  });
+
+  it("moves up directly to a surviving root bookmark when there is only one root choice", () => {
+    const entries = [
+      makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base" })
+    ];
+
+    expect(resolveBookmarkMovePlan("up", entries)).toEqual({
+      kind: "move-to-bookmark",
+      bookmarkName: "feat/ui"
+    });
+  });
+
+  it("prompts for a root bookmark when there is no current bookmark but multiple root choices remain", () => {
+    const entries = [
+      makeEntry({ name: "feat/api", parentBookmarkName: "feat/base" }),
+      makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base" })
+    ];
+
+    expect(resolveBookmarkMovePlan("up", entries)).toEqual({
+      kind: "choose-root-bookmark",
+      rootBookmarkNames: ["feat/api", "feat/ui"]
     });
   });
 

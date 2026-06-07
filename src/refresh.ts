@@ -20,7 +20,6 @@ export const resolveRefreshPlan = (
 ): RefreshPlan => {
   const currentEntry = entries.find((entry) => entry.entry.isCurrent)?.entry;
   const rootEntry = entries[0]?.entry;
-
   if (rootEntry === undefined || currentEntry === undefined) {
     return {
       kind: "clean-trunk",
