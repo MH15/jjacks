@@ -11,6 +11,10 @@ const formatClosedPullRequestAction = (pullRequest: PullRequestSummary): string 
     ? `PR #${pullRequest.number} is merged; skipping GitHub updates`
     : `PR #${pullRequest.number} is ${pullRequest.state?.toLowerCase() ?? "not open"}; skipping GitHub updates`;
 
+const isSyncableBaseEntry = (entry: StackStatusEntry): boolean =>
+  !(entry.entry.isEmpty === true && entry.pullRequest === null) &&
+  (entry.pullRequest === null || isPullRequestOpen(entry.pullRequest));
+
 const buildPlanActions = (
   entry: StackEntry,
   pullRequest: PullRequestSummary | null,
@@ -49,7 +53,7 @@ const buildLocalActions = (
   defaultBranch: string
 ): ReadonlyArray<string> => {
   const currentEntry = entries.find((entry) => entry.entry.isCurrent)?.entry;
-  const rootEntry = entries[0]?.entry;
+  const rootEntry = entries.find(isSyncableBaseEntry)?.entry;
 
   return [
     "fetch origin",
@@ -74,7 +78,7 @@ export const buildSyncPlanFromStatus = (
     stack: entries.map(({ entry, pullRequest, remoteBranchExists, needsBookmarkPush, blockedBy }): SyncPlanEntry => {
       let parentEntry = entry.parentBookmarkName === undefined ? undefined : entriesByName.get(entry.parentBookmarkName);
 
-      while (parentEntry !== undefined && parentEntry.entry.isEmpty === true && parentEntry.pullRequest === null) {
+      while (parentEntry !== undefined && !isSyncableBaseEntry(parentEntry)) {
         parentEntry =
           parentEntry.entry.parentBookmarkName === undefined
             ? undefined
