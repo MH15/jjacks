@@ -494,6 +494,14 @@ const getCurrentTree = Effect.gen(function* () {
   const currentBookmarkName = trackedBookmarks.find((entry) => entry.isCurrent)?.name;
   return selectCurrentBookmarkTree(trackedBookmarks, currentBookmarkName);
 });
+
+const buildCurrentTreeRevset = (
+  entries: ReadonlyArray<StackEntryType>
+): string | undefined => {
+  const rootEntry = entries[0];
+  return rootEntry === undefined ? undefined : `descendants(change_id("${rootEntry.changeId}"))`;
+};
+
 const make = {
   ensureAdvanceBookmarksEnabled,
   getStackCommentLocation,
@@ -637,13 +645,23 @@ const make = {
     Effect.gen(function* () {
       const process = yield* ProcessService;
       yield* ensureAdvanceBookmarksEnabled;
+      const currentTree = yield* getCurrentTree;
+      const currentTreeRevset = buildCurrentTreeRevset(currentTree);
 
       const revset =
         mode === "active"
           ? "trunk()..@"
           : mode === "bookmarks-only"
-            ? trackedBookmarksRevset
-            : `${trackedBookmarksRevset} | trunk()`;
+            ? currentTreeRevset === undefined
+              ? undefined
+              : `bookmarks() & ${currentTreeRevset} & ~trunk()`
+            : currentTreeRevset === undefined
+              ? "trunk()"
+              : `trunk() | ${currentTreeRevset}`;
+
+      if (revset === undefined) {
+        return "";
+      }
 
       const args = ["log", "-r", revset] as Array<string>;
       if (noGraph) {

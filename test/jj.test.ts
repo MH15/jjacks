@@ -4,6 +4,8 @@ import { Effect, Layer } from "effect";
 import { JjService, JjServiceLive } from "../src/services/JjService";
 import { ProcessService, type ProcessResult } from "../src/services/ProcessService";
 
+const trackedBookmarksRevsetForTest = "(::(bookmarks() & ~::trunk())) & ~::trunk()";
+
 const makeProcessLayer = (
   responses: (command: string, args: ReadonlyArray<string>) => ProcessResult
 ) =>
@@ -237,5 +239,107 @@ describe("JjService.createBookmark", () => {
 
     expect(calls.some((args) => args.join(" ") === "new -m feat/ui")).toBe(true);
     expect(calls.some((args) => args.join(" ") === "bookmark create feat/ui")).toBe(true);
+  });
+});
+
+describe("JjService.logBookmarks", () => {
+  const descendantsStdout = [
+    "feat/base\taaa111\t111aaa\tfeat/base\tfalse\t",
+    "feat/right\tbbb222\t222bbb\tfeat/right\tfalse\taaa111",
+    "feat/left\tccc333\t333ccc\tfeat/left\tfalse\taaa111"
+  ].join("\n");
+
+  it("logs only the current tree by default", async () => {
+    const calls: Array<ReadonlyArray<string>> = [];
+
+    const processLayer = makeProcessLayer((_command, args) => {
+      calls.push(args);
+
+      if (args[0] === "config") {
+        return { stdout: "true", stderr: "", exitCode: 0 };
+      }
+
+      if (args[0] === "log" && args[1] === "-r" && args[2] === trackedBookmarksRevsetForTest) {
+        return { stdout: descendantsStdout, stderr: "", exitCode: 0 };
+      }
+
+      if (args[0] === "log" && args[1] === "-r" && args[2] === `::@ & ${trackedBookmarksRevsetForTest}`) {
+        return {
+          stdout: "feat/right\tbbb222\t222bbb\tfeat/right\tfalse\taaa111",
+          stderr: "",
+          exitCode: 0
+        };
+      }
+
+      if (args[0] === "log" && args[1] === "-r" && args[2] === 'trunk() | descendants(change_id("aaa111"))') {
+        return { stdout: "current tree log", stderr: "", exitCode: 0 };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    const output = await Effect.runPromise(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        return yield* jjService.logBookmarks({
+          mode: "tree",
+          noGraph: false
+        });
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive)))
+    );
+
+    expect(output).toBe("current tree log");
+    expect(calls.some((args) => args.join(" ") === 'log -r trunk() | descendants(change_id("aaa111"))')).toBe(true);
+  });
+
+  it("limits bookmarks-only logging to the current tree bookmarks", async () => {
+    const calls: Array<ReadonlyArray<string>> = [];
+
+    const processLayer = makeProcessLayer((_command, args) => {
+      calls.push(args);
+
+      if (args[0] === "config") {
+        return { stdout: "true", stderr: "", exitCode: 0 };
+      }
+
+      if (args[0] === "log" && args[1] === "-r" && args[2] === trackedBookmarksRevsetForTest) {
+        return { stdout: descendantsStdout, stderr: "", exitCode: 0 };
+      }
+
+      if (args[0] === "log" && args[1] === "-r" && args[2] === `::@ & ${trackedBookmarksRevsetForTest}`) {
+        return {
+          stdout: "feat/right\tbbb222\t222bbb\tfeat/right\tfalse\taaa111",
+          stderr: "",
+          exitCode: 0
+        };
+      }
+
+      if (
+        args[0] === "log" &&
+        args[1] === "-r" &&
+        args[2] === 'bookmarks() & descendants(change_id("aaa111")) & ~trunk()'
+      ) {
+        return { stdout: "current tree bookmarks", stderr: "", exitCode: 0 };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    const output = await Effect.runPromise(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        return yield* jjService.logBookmarks({
+          mode: "bookmarks-only",
+          noGraph: true
+        });
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive)))
+    );
+
+    expect(output).toBe("current tree bookmarks");
+    expect(
+      calls.some((args) =>
+        args.join(" ") === 'log -r bookmarks() & descendants(change_id("aaa111")) & ~trunk() --no-graph'
+      )
+    ).toBe(true);
   });
 });
