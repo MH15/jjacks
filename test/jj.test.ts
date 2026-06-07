@@ -155,3 +155,87 @@ describe("JjService.moveToBookmark", () => {
     expect(calls.some((args) => args.join(" ") === "edit feat/ui")).toBe(true);
   });
 });
+
+describe("JjService.createBookmark", () => {
+  it("reuses the current unbookmarked working copy instead of creating another child change", async () => {
+    const calls: Array<ReadonlyArray<string>> = [];
+
+    const processLayer = makeProcessLayer((_command, args) => {
+      calls.push(args);
+
+      if (args[0] === "config") {
+        return { stdout: "true", stderr: "", exitCode: 0 };
+      }
+
+      if (args[0] === "log" && args[1] === "-r" && args[2] === "@") {
+        return {
+          stdout: "\tStart next change from main",
+          stderr: "",
+          exitCode: 0
+        };
+      }
+
+      if (args[0] === "bookmark" && args[1] === "create") {
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        yield* jjService.createBookmark({
+          bookmarkName: "feat/ui",
+          message: "feat/ui"
+        });
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive)))
+    );
+
+    expect(calls.some((args) => args[0] === "new")).toBe(false);
+    expect(calls.some((args) => args.join(" ") === "bookmark create feat/ui")).toBe(true);
+  });
+
+  it("creates a new child change when the current working copy is already bookmarked", async () => {
+    const calls: Array<ReadonlyArray<string>> = [];
+
+    const processLayer = makeProcessLayer((_command, args) => {
+      calls.push(args);
+
+      if (args[0] === "config") {
+        return { stdout: "true", stderr: "", exitCode: 0 };
+      }
+
+      if (args[0] === "log" && args[1] === "-r" && args[2] === "@") {
+        return {
+          stdout: "feat/base\tfeat/base",
+          stderr: "",
+          exitCode: 0
+        };
+      }
+
+      if (args[0] === "new") {
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+
+      if (args[0] === "bookmark" && args[1] === "create") {
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        yield* jjService.createBookmark({
+          bookmarkName: "feat/ui",
+          message: "feat/ui"
+        });
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive)))
+    );
+
+    expect(calls.some((args) => args.join(" ") === "new -m feat/ui")).toBe(true);
+    expect(calls.some((args) => args.join(" ") === "bookmark create feat/ui")).toBe(true);
+  });
+});

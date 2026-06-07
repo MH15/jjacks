@@ -289,7 +289,13 @@ const make = {
     Effect.gen(function* () {
       const process = yield* ProcessService;
       yield* ensureAdvanceBookmarksEnabled;
-      yield* process.run("jj", ["new", "-m", message]);
+      const workingCopyState = yield* process.run("jj", ["log", "-r", "@", "-T", workingCopyStateTemplate, "--no-graph"]);
+      const currentState = parseWorkingCopyStateLine(workingCopyState.stdout);
+
+      if (currentState?.bookmarks.length !== 0) {
+        yield* process.run("jj", ["new", "-m", message]);
+      }
+
       yield* process.run("jj", ["bookmark", "create", bookmarkName]);
     }),
 

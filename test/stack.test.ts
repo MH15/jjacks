@@ -340,6 +340,90 @@ describe("StackService with injected fakes", () => {
     expect(result.warnings).toEqual([]);
   });
 
+  it("ignores repo-tracked bookmarks when the current working copy is just an empty trunk continuation", async () => {
+    const trackedBookmarks: ReadonlyArray<StackEntry> = [
+      {
+        name: "feat/elsewhere",
+        changeId: "bbb222",
+        commitId: "222bbb",
+        description: "feat/elsewhere",
+        parentBookmarkName: undefined,
+        branchName: "feat/elsewhere",
+        isCurrent: false
+      }
+    ];
+
+    const jjLayer = Layer.succeed(JjService, {
+      ensureAdvanceBookmarksEnabled: Effect.void,
+      getCurrentStack: Effect.succeed([]),
+      getTrackedBookmarks: Effect.succeed(trackedBookmarks),
+      ensureBookmarkDescription: () => Effect.void,
+      createBookmark: () => Effect.void,
+      moveUp: Effect.succeed(""),
+      moveDown: Effect.succeed(""),
+      syncBookmarkToRemote: () => Effect.void,
+      startWorkingCopyOnBookmark: () => Effect.succeed(""),
+      continueWorkingCopyOnStack: () => Effect.succeed(""),
+      refreshToRemoteBookmark: () => Effect.succeed(""),
+      diffCurrentStack: () => Effect.die("diffCurrentStack should not be used in this test.")
+    });
+
+    const repoLayer = Layer.succeed(RepoService, {
+      fetchOrigin: Effect.void,
+      getRepoInfo: Effect.succeed(repoInfo)
+    });
+
+    const githubLayer = Layer.succeed(GitHubService, {
+      findPullRequestsByHeads: () => Effect.die("findPullRequestsByHeads should not be used without an active stack."),
+      findPullRequestByHead: () => Effect.die("findPullRequestByHead should not be used without an active stack."),
+      createPullRequest: () => Effect.die("createPullRequest should not be used without an active stack."),
+      updatePullRequest: () => Effect.void,
+      listIssueComments: () => Effect.succeed([]),
+      createIssueComment: () => Effect.void,
+      updateIssueComment: () => Effect.void
+    });
+
+    const gitLayer = Layer.succeed(GitService, {
+      getBookmarksRemoteState: () => Effect.die("getBookmarksRemoteState should not be used without an active stack."),
+      getBookmarkRemoteState: () => Effect.die("getBookmarkRemoteState should not be used without an active stack."),
+      pushBookmarks: () => Effect.void,
+      pushBookmark: () => Effect.void
+    });
+
+    const processLayer = Layer.succeed(ProcessService, {
+      run: () =>
+        Effect.die("ProcessService should not be used when fake JJ/GitHub/Repo services are provided.")
+    });
+
+    const layer = Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive);
+
+    const status = await Effect.runPromise(
+      Effect.gen(function* () {
+        const stackService = yield* StackService;
+        return yield* stackService.getStatus;
+      }).pipe(Effect.provide(layer))
+    );
+    const plan = await Effect.runPromise(
+      Effect.gen(function* () {
+        const stackService = yield* StackService;
+        return yield* stackService.buildSyncPlan;
+      }).pipe(Effect.provide(layer))
+    );
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const stackService = yield* StackService;
+        return yield* stackService.executeSync;
+      }).pipe(Effect.provide(layer))
+    );
+
+    expect(status.entries).toEqual([]);
+    expect(plan.stack).toEqual([]);
+    expect(result.statusEntries).toEqual([]);
+    expect(result.createdPullRequestBookmarks).toEqual([]);
+    expect(result.pushedBookmarks).toEqual([]);
+    expect(result.warnings).toEqual([]);
+  });
+
   it("pushes missing bookmarks during execute sync and refreshes status", async () => {
     const harness = makeLayer();
     const result = await Effect.runPromise(

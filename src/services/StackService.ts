@@ -78,11 +78,11 @@ export class StackService extends Context.Tag("StackService")<
   }
 >() {}
 
-const getStatusEntries = Effect.gen(function* () {
+const getCurrentStatusEntries = Effect.gen(function* () {
   const jj = yield* JjService;
   const gh = yield* GitHubService;
   const git = yield* GitService;
-  const stack = yield* jj.getTrackedBookmarks;
+  const stack = yield* jj.getCurrentStack;
   if (stack.length === 0) {
     return [];
   }
@@ -113,7 +113,7 @@ const getStatusEntries = Effect.gen(function* () {
 const prepareSync = Effect.gen(function* () {
   const repo = yield* RepoService;
   const repoInfo = yield* repo.getRepoInfo;
-  const entries = yield* getStatusEntries;
+  const entries = yield* getCurrentStatusEntries;
 
   return {
     defaultBranch: repoInfo.defaultBranch ?? "main",
@@ -134,7 +134,7 @@ const ensureSyncDescriptions = (entries: ReadonlyArray<StackStatusEntry>) =>
     });
 
     return {
-      entries: blankDescriptions.length === 0 ? entries : yield* getStatusEntries,
+      entries: blankDescriptions.length === 0 ? entries : yield* getCurrentStatusEntries,
       describedBookmarks: blankDescriptions.map((entry) => entry.name)
     };
   });
@@ -149,7 +149,7 @@ const pushSyncBookmarks = (entries: ReadonlyArray<StackStatusEntry>) =>
     yield* git.pushBookmarks(toPush);
 
     return {
-      entries: toPush.length === 0 ? entries : yield* getStatusEntries,
+      entries: toPush.length === 0 ? entries : yield* getCurrentStatusEntries,
       pushedBookmarks: toPush
     };
   });
@@ -222,7 +222,7 @@ const reconcileSyncPullRequests = ({
       { discard: true, concurrency: 4 }
     );
 
-    const finalEntries = yield* getStatusEntries;
+    const finalEntries = yield* getCurrentStatusEntries;
 
     return {
       entries: finalEntries,
@@ -321,7 +321,7 @@ const make = {
   getStatus: Effect.gen(function* () {
     const repo = yield* RepoService;
     const repoInfo = yield* repo.getRepoInfo;
-    const entries = yield* getStatusEntries;
+    const entries = yield* getCurrentStatusEntries;
 
     return {
       repoRoot: repoInfo.root,
@@ -332,7 +332,7 @@ const make = {
   buildSyncPlan: Effect.gen(function* () {
     const repo = yield* RepoService;
     const repoInfo = yield* repo.getRepoInfo;
-    const entries = yield* getStatusEntries;
+    const entries = yield* getCurrentStatusEntries;
 
     return buildSyncPlanFromStatus(entries, repoInfo.defaultBranch ?? "main") satisfies SyncPlan;
   }),
