@@ -248,7 +248,11 @@ Use:
 - `jjacks up`
 - `jjacks down`
 
-These should follow the current bookmark lane rather than jumping around unrelated descendants elsewhere in the repo.
+These move between bookmarks in the current bookmark lane.
+
+They should follow the current bookmark lane rather than jumping around unrelated descendants elsewhere in the repo.
+
+If a bookmark has multiple child bookmarks above it, `jjacks up` should prompt you to choose which child bookmark to continue from.
 
 ## Refreshing After Lower PRs Merge
 

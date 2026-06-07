@@ -176,7 +176,7 @@ const up = Command.make("up", {}, () =>
     const move = yield* resolveBookmarkMove("up");
     yield* runMoveCommand("up", move);
   })
-).pipe(Command.withDescription("Move up the current bookmark stack with `jj next`."));
+).pipe(Command.withDescription("Move to the next bookmark in the current bookmark stack."));
 
 const u = Command.make("u", {}, () =>
   Effect.gen(function* () {
@@ -190,7 +190,7 @@ const down = Command.make("down", {}, () =>
     const move = yield* resolveBookmarkMove("down");
     yield* runMoveCommand("down", move);
   })
-).pipe(Command.withDescription("Move down the current bookmark stack with `jj prev`."));
+).pipe(Command.withDescription("Move to the previous bookmark in the current bookmark stack."));
 
 const d = Command.make("d", {}, () =>
   Effect.gen(function* () {
