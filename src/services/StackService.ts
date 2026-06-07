@@ -397,4 +397,4 @@ const make = {
   executeSync
 };
 
-export const StackServiceLive = Layer.effect(StackService, Effect.succeed(make));
+export const StackServiceLive = Layer.succeed(StackService, make);
