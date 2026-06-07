@@ -1,6 +1,7 @@
 import type { PullRequestSummary, StackEntry, StackStatusEntry, SyncPlan, SyncPlanEntry } from "./domain";
 
 const STACK_COMMENT_MARKER = "<!-- jjacks:stack -->";
+const STACK_COMMENT_END_MARKER = "<!-- /jjacks:stack -->";
 
 const buildPlanActions = (
   entry: StackEntry,
@@ -99,8 +100,27 @@ export const renderStackComment = (
           : entry.pullRequest?.number !== undefined && entry.pullRequest.number === highlightedPullRequestNumber,
         entryDepth(entry, entriesByName)
       )
-    )
+    ),
+    "",
+    STACK_COMMENT_END_MARKER
   ].join("\n");
+};
+
+export const upsertStackCommentInBody = (body: string, stackComment: string): string => {
+  const start = body.indexOf(STACK_COMMENT_MARKER);
+  const end = body.indexOf(STACK_COMMENT_END_MARKER);
+
+  if (start !== -1 && end !== -1 && end >= start) {
+    const prefix = body.slice(0, start).trimEnd();
+    const suffix = body.slice(end + STACK_COMMENT_END_MARKER.length).trimStart();
+    return [prefix, stackComment, suffix].filter((part) => part.length > 0).join("\n\n");
+  }
+
+  if (body.trim().length === 0) {
+    return stackComment;
+  }
+
+  return `${body.trimEnd()}\n\n${stackComment}`;
 };
 
 export const stackCommentMarker = STACK_COMMENT_MARKER;

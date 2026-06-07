@@ -2,7 +2,7 @@ import { Context, Effect, Layer } from "effect";
 
 import type { ExecuteSyncResult, StackStatusEntry, SyncPlan } from "../domain";
 import { CliError } from "../errors";
-import { buildSyncPlanFromStatus, renderStackComment, stackCommentMarker } from "../stack";
+import { buildSyncPlanFromStatus, renderStackComment, stackCommentMarker, upsertStackCommentInBody } from "../stack";
 import { GitService } from "./GitService";
 import { GitHubService } from "./GitHubService";
 import { JjService } from "./JjService";
@@ -163,6 +163,8 @@ const reconcileSyncPullRequests = ({
 }) =>
   Effect.gen(function* () {
     const gh = yield* GitHubService;
+    const jj = yield* JjService;
+    const stackCommentLocation = yield* jj.getStackCommentLocation;
     const refreshedPlan = buildSyncPlanFromStatus(entries, defaultBranch);
     const createdPullRequestBookmarks: Array<string> = [];
     const updatedPullRequestNumbers: Array<number> = [];
@@ -195,8 +197,19 @@ const reconcileSyncPullRequests = ({
         const nextBase =
           planEntry.pullRequest.baseRefName !== planEntry.intendedBaseBranch ? planEntry.intendedBaseBranch : undefined;
         const nextTitle = planEntry.pullRequest.title !== planEntry.entry.name ? planEntry.entry.name : undefined;
+        const nextBody =
+          stackCommentLocation === "description"
+            ? upsertStackCommentInBody(
+                planEntry.pullRequest.body,
+                renderStackComment(entries, planEntry.pullRequest.number)
+              )
+            : undefined;
 
-        if (nextBase === undefined && nextTitle === undefined) {
+        if (
+          nextBase === undefined &&
+          nextTitle === undefined &&
+          (nextBody === undefined || nextBody === planEntry.pullRequest.body)
+        ) {
           return;
         }
 
@@ -204,6 +217,7 @@ const reconcileSyncPullRequests = ({
           readonly number: number;
           readonly baseBranch?: string;
           readonly title?: string;
+          readonly body?: string;
         } = {
           number: planEntry.pullRequest.number
         };
@@ -214,6 +228,10 @@ const reconcileSyncPullRequests = ({
 
         if (nextTitle !== undefined) {
           Object.assign(updateOptions, { title: nextTitle });
+        }
+
+        if (nextBody !== undefined && nextBody !== planEntry.pullRequest.body) {
+          Object.assign(updateOptions, { body: nextBody });
         }
 
         yield* gh.updatePullRequest(updateOptions);
@@ -235,8 +253,42 @@ const reconcileSyncPullRequests = ({
 const syncStackComments = (entries: ReadonlyArray<StackStatusEntry>) =>
   Effect.gen(function* () {
     const gh = yield* GitHubService;
+    const jj = yield* JjService;
+    const stackCommentLocation = yield* jj.getStackCommentLocation;
     const updatedCommentPullRequestNumbers: Array<number> = [];
     const warnings: Array<string> = [];
+
+    if (stackCommentLocation === "description") {
+      yield* Effect.forEach(entries, (entry) =>
+        Effect.gen(function* () {
+          const pullRequest = entry.pullRequest;
+          if (pullRequest === null) {
+            return;
+          }
+
+          const nextBody = upsertStackCommentInBody(
+            pullRequest.body,
+            renderStackComment(entries, pullRequest.number)
+          );
+
+          if (nextBody === pullRequest.body) {
+            return;
+          }
+
+          yield* gh.updatePullRequest({
+            number: pullRequest.number,
+            body: nextBody
+          });
+          updatedCommentPullRequestNumbers.push(pullRequest.number);
+        }),
+        { discard: true, concurrency: 4 }
+      );
+
+      return {
+        updatedCommentPullRequestNumbers,
+        warnings
+      };
+    }
 
     yield* Effect.forEach(entries, (entry) =>
       Effect.gen(function* () {
