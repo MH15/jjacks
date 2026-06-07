@@ -174,9 +174,13 @@ const refreshLocalStack = Effect.gen(function* () {
   const defaultBranch = repoInfo.defaultBranch ?? "main";
   yield* jj.syncBookmarkToRemote(defaultBranch);
 
-  const stack = yield* jj.getCurrentTree;
-  const currentEntry = stack.find((entry) => entry.isCurrent);
-  const rootEntry = stack[0];
+  const entries = yield* getCurrentStatusEntries;
+  const currentEntry = entries.find((entry) => entry.entry.isCurrent)?.entry;
+  const rootEntry = entries.find((entry) =>
+    entry.blockedBy === undefined &&
+    !(entry.entry.isEmpty === true && entry.pullRequest === null) &&
+    (entry.pullRequest === null || isPullRequestOpen(entry.pullRequest))
+  )?.entry;
 
   if (rootEntry !== undefined && currentEntry !== undefined) {
     yield* jj.continueWorkingCopyOnStack({

@@ -968,6 +968,69 @@ describe("buildSyncPlanFromStatus", () => {
     expect(plan.stack[0]?.actions).not.toContain(expect.stringContaining("retarget PR #55"));
   });
 
+  it("retargets children of merged PRs to the nearest syncable base", () => {
+    const plan = buildSyncPlanFromStatus(
+      [
+        {
+          entry: {
+            name: "remove-refresh",
+            changeId: "aaa111",
+            commitId: "111aaa",
+            description: "remove-refresh",
+            parentBookmarkName: undefined,
+            branchName: "remove-refresh",
+            isCurrent: false
+          },
+          pullRequest: {
+            number: 56,
+            url: "https://github.com/MH15/jjacks/pull/56",
+            title: "remove-refresh",
+            headRefName: "remove-refresh",
+            baseRefName: "mh/open-questions",
+            state: "MERGED",
+            isDraft: false,
+            body: ""
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: false
+        },
+        {
+          entry: {
+            name: "fix/create-next-copy",
+            changeId: "bbb222",
+            commitId: "222bbb",
+            description: "fix/create-next-copy",
+            parentBookmarkName: "remove-refresh",
+            branchName: "fix/create-next-copy",
+            isCurrent: true
+          },
+          pullRequest: {
+            number: 57,
+            url: "https://github.com/MH15/jjacks/pull/57",
+            title: "fix/create-next-copy",
+            headRefName: "fix/create-next-copy",
+            baseRefName: "remove-refresh",
+            state: "OPEN",
+            isDraft: false,
+            body: ""
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: false
+        }
+      ],
+      "main"
+    );
+
+    expect(plan.localActions).toEqual([
+      "fetch origin",
+      "move main to main@origin",
+      "rebase fix/create-next-copy onto main",
+      "continue from fix/create-next-copy"
+    ]);
+    expect(plan.stack[1]?.intendedBaseBranch).toBe("main");
+    expect(plan.stack[1]?.actions).toContain("retarget PR #57 base from remove-refresh to main");
+  });
+
   it("keeps sibling branches based on their shared bookmarked parent instead of chaining them together", () => {
     const plan = buildSyncPlanFromStatus(
       [
