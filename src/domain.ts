@@ -59,9 +59,21 @@ export const SyncPlanEntry = Schema.Struct({
 }).annotations({ identifier: "SyncPlanEntry" });
 export type SyncPlanEntry = Schema.Schema.Type<typeof SyncPlanEntry>;
 
+export const SyncPlanInfoEntry = Schema.Struct({
+  entry: StackEntry,
+  pullRequest: Schema.NullOr(PullRequestSummary),
+  actions: Schema.Array(Schema.String)
+}).annotations({ identifier: "SyncPlanInfoEntry" });
+export type SyncPlanInfoEntry = Schema.Schema.Type<typeof SyncPlanInfoEntry>;
+
 export const SyncPlan = Schema.Struct({
   localActions: Schema.Array(Schema.String),
-  stack: Schema.Array(SyncPlanEntry)
+  githubActions: Schema.Array(SyncPlanEntry),
+  landedEntries: Schema.Array(SyncPlanInfoEntry),
+  closedEntries: Schema.Array(SyncPlanInfoEntry),
+  blockedEntries: Schema.Array(SyncPlanInfoEntry),
+  hasExecutableWork: Schema.Boolean,
+  completionState: Schema.Literal("active-stack", "stack-complete", "empty")
 }).annotations({ identifier: "SyncPlan" });
 export type SyncPlan = Schema.Schema.Type<typeof SyncPlan>;
 

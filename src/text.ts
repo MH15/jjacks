@@ -34,7 +34,7 @@ type RenderSyncPreviewOptions = {
 const formatSyncHeader = (color: boolean): string => (color ? chalk.bold("jjacks sync plan") : "jjacks sync plan");
 
 const formatBookmarkLine = (
-  entry: SyncPlan["stack"][number],
+  entry: SyncPlan["githubActions"][number] | SyncPlan["landedEntries"][number],
   color: boolean
 ): string => {
   const name = color ? chalk.bold(entry.entry.name) : entry.entry.name;
@@ -68,6 +68,17 @@ const formatAction = (action: string, color: boolean): string => {
 
 const formatNoChanges = (color: boolean): string => (color ? chalk.gray("- no changes") : "- no changes");
 
+const renderPlanEntries = (
+  entries: ReadonlyArray<SyncPlan["githubActions"][number] | SyncPlan["landedEntries"][number]>,
+  color: boolean
+): ReadonlyArray<string> =>
+  entries.flatMap((entry, index) => {
+    const renderedActions =
+      entry.actions.length === 0 ? [formatNoChanges(color)] : entry.actions.map((action) => formatAction(action, color));
+
+    return [...(index === 0 ? [] : [""]), formatBookmarkLine(entry, color), ...renderedActions];
+  });
+
 export const renderSyncPlan = (plan: SyncPlan, options: RenderSyncPreviewOptions = {}): string => {
   const color = options.color ?? false;
 
@@ -76,18 +87,18 @@ export const renderSyncPlan = (plan: SyncPlan, options: RenderSyncPreviewOptions
     ...(plan.localActions.length === 0
       ? []
       : ["", color ? chalk.cyan("local") : "local", ...plan.localActions.map((action) => formatAction(action, color))]),
-    ...(plan.stack.length === 0 ? [] : ["", color ? chalk.cyan("github") : "github"]),
-    ...plan.stack.flatMap((entry, index) => {
-      const renderedActions =
-        entry.actions.length === 0 ? [formatNoChanges(color)] : entry.actions.map((action) => formatAction(action, color));
-
-      return [...(index === 0 ? [] : [""]), formatBookmarkLine(entry, color), ...renderedActions];
-    })
+    ...(plan.landedEntries.length === 0 ? [] : ["", color ? chalk.cyan("completed") : "completed", ...renderPlanEntries(plan.landedEntries, color)]),
+    ...(plan.closedEntries.length === 0 ? [] : ["", color ? chalk.cyan("closed") : "closed", ...renderPlanEntries(plan.closedEntries, color)]),
+    ...(plan.blockedEntries.length === 0 ? [] : ["", color ? chalk.cyan("blocked") : "blocked", ...renderPlanEntries(plan.blockedEntries, color)]),
+    ...(plan.githubActions.length === 0 ? [] : ["", color ? chalk.cyan("github") : "github", ...renderPlanEntries(plan.githubActions, color)]),
+    ...(plan.completionState === "stack-complete"
+      ? ["", "No syncable stack remains.", "next: jjacks create <bookmark-name>"]
+      : [])
   ].join("\n");
 };
 
 export const renderSyncPreview = (plan: SyncPlan, options: RenderSyncPreviewOptions = {}): string =>
-  plan.stack.length === 0
+  plan.completionState === "empty"
     ? [
         formatSyncHeader(options.color ?? false),
         ...(plan.localActions.length === 0
@@ -105,7 +116,7 @@ const formatSummaryCount = (count: number, singular: string, plural: string = `$
 export const renderExecuteSummary = (result: ExecuteSyncResult): string => {
   const pullRequestChanges = result.createdPullRequestBookmarks.length + result.updatedPullRequestNumbers.length;
   const summary = [
-    formatSummaryCount(result.pushedBookmarks.length, "push"),
+    formatSummaryCount(result.pushedBookmarks.length, "push", "pushes"),
     formatSummaryCount(pullRequestChanges, "PR", "PRs"),
     formatSummaryCount(result.updatedCommentPullRequestNumbers.length, "comment")
   ].join(", ");
