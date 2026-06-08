@@ -687,7 +687,7 @@ const root = Command.make("jjacks", {}, () => Console.log("Use a subcommand."))
 
 const cli = Command.run(root, {
   name: "jjacks",
-  version: "0.1.0",
+  version: "0.1.1",
 });
 
 cli(process.argv).pipe(
