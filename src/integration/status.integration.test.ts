@@ -284,7 +284,7 @@ describe("jjacks sync integration", () => {
     expect(result.stdout).toContain("jjacks sync plan");
     expect(result.stdout).toContain("github");
     expect(result.stdout).toContain("feat/base");
-    expect(result.stdout).toContain("PR #12");
+    expect(result.stdout).toContain("https://github.com/MH15/jjacks/pull/12");
     expect(result.stdout).toContain("- push bookmark");
     expect(result.stdout).toContain("feat/child");
     expect(result.stdout).toContain("- create PR with base feat/base");

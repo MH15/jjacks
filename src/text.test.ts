@@ -124,7 +124,7 @@ describe("renderSyncPreview", () => {
       completionState: "active-stack"
     });
 
-    expect(output).toContain("feat/base (PR #12)");
+    expect(output).toContain("feat/base https://github.com/MH15/jjacks/pull/12");
     expect(output).toContain("- no changes");
   });
 });
