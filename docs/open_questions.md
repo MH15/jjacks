@@ -65,58 +65,7 @@ npm --cache /tmp/jjacks-npm-cache pack --dry-run
 
 The tarball should contain only the runtime CLI and user-facing package metadata.
 
-### 2. Partial `sync --execute` Failure Recovery Is Missing
-
-`jjacks sync --execute` applies several independent side effects:
-
-- fill blank jj descriptions
-- fetch and refresh local stack state
-- push bookmarks
-- create or edit PRs
-- write stack comments or PR-body breadcrumbs
-
-If any later step fails, the local repo and GitHub may be partially reconciled. That is manageable for personal use, but scary in a larger workflow where a command may create several PRs or retarget active review branches.
-
-#### 90/10 Implementation
-
-Add a local operation journal under `.jjacks/operations/`.
-
-Each `sync --execute` writes a JSON file before doing side effects:
-
-```json
-{
-  "id": "2026-06-07T22-10-00Z-sync",
-  "command": "sync",
-  "startedAt": "2026-06-07T22:10:00Z",
-  "status": "running",
-  "steps": [
-    { "kind": "describe", "bookmark": "feat/base", "status": "pending" },
-    { "kind": "push", "bookmark": "feat/base", "status": "pending" },
-    { "kind": "create-pr", "bookmark": "feat/base", "base": "main", "status": "pending" }
-  ]
-}
-```
-
-Update each step after success or failure.
-
-Add:
-
-- `jjacks sync --resume`
-- `jjacks sync --abort-journal`
-- `jjacks doctor` warning when a journal is left in `running` or `failed`
-
-The resume behavior can be idempotent:
-
-- descriptions can be checked again
-- pushes can be checked again
-- existing PRs can be rediscovered by head branch
-- comments can be upserted by marker
-
-#### Not Yet
-
-Do not attempt true rollback. GitHub side effects are hard to safely undo. Resume plus clear status is the practical win.
-
-### 3. Integration Coverage Is Too Thin
+### 2. Integration Coverage Is Too Thin
 
 The integration harness exists and is valuable, but it still covers only a small slice of real workflows.
 
@@ -145,7 +94,7 @@ Extend the integration test harness with execute-path scenarios:
 
 Keep GitHub mocked at the process boundary with a fake `gh` executable earlier in `PATH`. No CI test should require real network access or real GitHub auth.
 
-### 4. Launch Docs Need A Pass
+### 3. Launch Docs Need A Pass
 
 The docs now describe the intended shape more accurately, but the user-facing launch path is still thin.
 
@@ -168,7 +117,23 @@ The docs should clearly distinguish:
 
 ## Remaining Product Questions
 
-These are important, but they should not block a constrained beta if the four launch blockers above are handled or explicitly caveated.
+These are important, but they should not block a constrained beta if the launch blockers above are handled or explicitly caveated.
+
+### Should `sync --execute` Have An Operation Journal?
+
+Decision for now: no, not for launch.
+
+`jjacks sync --execute` applies several independent side effects:
+
+- fill blank jj descriptions
+- fetch and refresh local stack state
+- push bookmarks
+- create or edit PRs
+- write stack comments or PR-body breadcrumbs
+
+The current product stance is that these operations are rediscoverable enough for the near-term workflow. If a later step fails, users should run `jjacks status`, fix the underlying problem, and rerun `jjacks sync`.
+
+Revisit operation journals only if real usage shows repeated confusing partial-failure states. The future version would use a local `.jjacks/operations/` journal plus `sync --resume`, but that is hardening work rather than a launch blocker.
 
 ### How Explicit Should Stack Identity Be?
 
@@ -225,9 +190,8 @@ The current implementation already moves in that direction. The remaining work i
 ## Proposed Build Order
 
 1. Fix package contents and decide the release channel.
-2. Add sync operation journals, `sync --resume`, and stale journal warnings in `doctor`.
-3. Expand integration tests around `sync --execute` and navigation.
-4. Update README and tutorial for launch-quality install, setup, and recovery docs.
-5. Add optional named stack roots once real-world usage shows that inference needs more guardrails.
+2. Expand integration tests around `sync --execute` and navigation.
+3. Update README and tutorial for launch-quality install, setup, and recovery docs.
+4. Add optional named stack roots once real-world usage shows that inference needs more guardrails.
 
 This order removes the immediate launch hazards first, then improves confidence, then adds broader workflow safety.

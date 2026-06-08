@@ -1,5 +1,5 @@
 import { execFile as execFileCallback } from "node:child_process";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -21,6 +21,19 @@ type FakePullRequest = {
   readonly state: "OPEN" | "MERGED" | "CLOSED";
   readonly isDraft: boolean;
   readonly body: string;
+};
+
+type FakePullRequestComment = {
+  readonly id: number;
+  readonly body: string;
+  readonly url: string;
+};
+
+type FakeGhState = {
+  readonly pullRequests: ReadonlyArray<FakePullRequest>;
+  readonly comments?: Record<string, ReadonlyArray<FakePullRequestComment>>;
+  readonly nextPullRequestNumber?: number;
+  readonly nextCommentId?: number;
 };
 
 type IntegrationHarness = {
@@ -78,7 +91,7 @@ const run = async (
   });
 
 const fakeGhScript = `#!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 const statePath = process.env.JJACKS_FAKE_GH_STATE;
 if (statePath === undefined) {
@@ -87,7 +100,17 @@ if (statePath === undefined) {
 }
 
 const state = JSON.parse(readFileSync(statePath, "utf8"));
+state.pullRequests ??= [];
+state.comments ??= {};
+state.nextPullRequestNumber ??=
+  Math.max(0, ...state.pullRequests.map((pullRequest) => pullRequest.number)) + 1;
+state.nextCommentId ??=
+  Math.max(0, ...Object.values(state.comments).flat().map((comment) => comment.id)) + 1;
 const args = process.argv.slice(2);
+
+const save = () => {
+  writeFileSync(statePath, JSON.stringify(state, null, 2));
+};
 
 const valueAfter = (flag) => {
   const index = args.indexOf(flag);
@@ -103,12 +126,113 @@ if (args[0] === "pr" && args[1] === "list") {
   process.exit(0);
 }
 
+if (args[0] === "pr" && args[1] === "create") {
+  const head = valueAfter("--head");
+  const base = valueAfter("--base");
+  const title = valueAfter("--title");
+  const body = valueAfter("--body") ?? "";
+
+  if (head === undefined || base === undefined || title === undefined) {
+    console.error("fake gh pr create requires --head, --base, and --title");
+    process.exit(1);
+  }
+
+  const number = state.nextPullRequestNumber++;
+  state.pullRequests.push({
+    number,
+    url: \`https://github.com/MH15/jjacks/pull/\${number}\`,
+    title,
+    headRefName: head,
+    headRepositoryOwner: "integration",
+    baseRefName: base,
+    state: "OPEN",
+    isDraft: false,
+    body,
+  });
+  save();
+  console.log(\`https://github.com/MH15/jjacks/pull/\${number}\`);
+  process.exit(0);
+}
+
+if (args[0] === "pr" && args[1] === "edit") {
+  const number = Number(args[2]);
+  const pullRequest = state.pullRequests.find((candidate) => candidate.number === number);
+  if (pullRequest === undefined) {
+    console.error(\`PR #\${number} not found\`);
+    process.exit(1);
+  }
+
+  const base = valueAfter("--base");
+  const title = valueAfter("--title");
+  const body = valueAfter("--body");
+  if (base !== undefined) {
+    pullRequest.baseRefName = base;
+  }
+  if (title !== undefined) {
+    pullRequest.title = title;
+  }
+  if (body !== undefined) {
+    pullRequest.body = body;
+  }
+  save();
+  process.exit(0);
+}
+
+if (args[0] === "api") {
+  const method = valueAfter("--method") ?? "GET";
+  const path = args.find((arg) => arg.startsWith("/repos/"));
+  const bodyField = args.find((arg) => arg.startsWith("body="));
+  const body = bodyField === undefined ? "" : bodyField.slice("body=".length);
+
+  if (path === undefined) {
+    console.error("fake gh api requires a repo path");
+    process.exit(1);
+  }
+
+  const issueCommentsMatch = path.match(/\\/issues\\/(\\d+)\\/comments$/);
+  if (method === "GET" && issueCommentsMatch !== null) {
+    console.log(JSON.stringify(state.comments[issueCommentsMatch[1]] ?? []));
+    process.exit(0);
+  }
+
+  if (method === "POST" && issueCommentsMatch !== null) {
+    const pullRequestNumber = issueCommentsMatch[1];
+    const id = state.nextCommentId++;
+    const comment = {
+      id,
+      body,
+      url: \`https://github.com/MH15/jjacks/pull/\${pullRequestNumber}#issuecomment-\${id}\`,
+    };
+    state.comments[pullRequestNumber] ??= [];
+    state.comments[pullRequestNumber].push(comment);
+    save();
+    console.log(JSON.stringify(comment));
+    process.exit(0);
+  }
+
+  const commentMatch = path.match(/\\/issues\\/comments\\/(\\d+)$/);
+  if (method === "PATCH" && commentMatch !== null) {
+    const id = Number(commentMatch[1]);
+    const comments = Object.values(state.comments).flat();
+    const comment = comments.find((candidate) => candidate.id === id);
+    if (comment === undefined) {
+      console.error(\`Comment #\${id} not found\`);
+      process.exit(1);
+    }
+    comment.body = body;
+    save();
+    console.log(JSON.stringify(comment));
+    process.exit(0);
+  }
+}
+
 console.error(\`Unexpected fake gh call: gh \${args.join(" ")}\`);
 process.exit(1);
 `;
 
 const createHarness = async (options?: {
   readonly pullRequests?: ReadonlyArray<FakePullRequest>;
+  readonly comments?: Record<string, ReadonlyArray<FakePullRequestComment>>;
 }): Promise<IntegrationHarness> => {
   const root = await mkdtemp(path.join(os.tmpdir(), "jjacks-integration-"));
   const repo = path.join(root, "repo");
@@ -149,6 +273,7 @@ const createHarness = async (options?: {
           body: "",
         },
       ],
+      comments: options?.comments ?? {},
     }),
   );
 
@@ -178,6 +303,9 @@ const createHarness = async (options?: {
   harnesses.push(harness);
   return harness;
 };
+
+const readFakeGhState = async (harness: IntegrationHarness): Promise<FakeGhState> =>
+  JSON.parse(await readFile(harness.fakeGhStatePath, "utf8"));
 
 const initializeRepo = async (
   harness: IntegrationHarness,
@@ -317,5 +445,112 @@ describe("jjacks sync integration", () => {
     expect(result.stdout).toContain("- push bookmark");
     expect(result.stdout).toContain("feat/child");
     expect(result.stdout).toContain("- create PR with base feat/base");
+  });
+
+  it("executes sync by pushing bookmarks, creating missing PRs, and writing stack comments", async () => {
+    const harness = await createHarness();
+    await initializeRepo(harness, { childBookmark: "feat/child" });
+
+    const result = await run(
+      "node",
+      [path.join(process.cwd(), "dist/cli.js"), "sync", "--execute"],
+      {
+        cwd: harness.repo,
+        env: harness.env,
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain("Sync stack comments");
+    expect(result.stderr).not.toContain("Unexpected fake gh call");
+    expect(result.stdout).toContain("2 pushes, 1 PR, 2 comments");
+
+    const state = await readFakeGhState(harness);
+    const childPullRequest = state.pullRequests.find(
+      (pullRequest) => pullRequest.headRefName === "feat/child",
+    );
+    expect(childPullRequest).toMatchObject({
+      title: "feat/child",
+      baseRefName: "feat/base",
+      state: "OPEN",
+    });
+    expect(state.comments?.["12"]?.[0]?.body).toContain("jjacks:stack");
+    expect(state.comments?.[String(childPullRequest?.number)]?.[0]?.body).toContain("jjacks:stack");
+  });
+
+  it("executes sync by updating stale PR metadata instead of creating duplicates", async () => {
+    const harness = await createHarness({
+      pullRequests: [
+        {
+          number: 12,
+          url: "https://github.com/MH15/jjacks/pull/12",
+          title: "feat/base",
+          headRefName: "feat/base",
+          headRepositoryOwner: "coworker",
+          baseRefName: "main",
+          state: "OPEN",
+          isDraft: false,
+          body: "",
+        },
+        {
+          number: 13,
+          url: "https://github.com/MH15/jjacks/pull/13",
+          title: "old title",
+          headRefName: "feat/child",
+          headRepositoryOwner: "coworker",
+          baseRefName: "main",
+          state: "OPEN",
+          isDraft: false,
+          body: "",
+        },
+      ],
+    });
+    await initializeRepo(harness, { childBookmark: "feat/child" });
+
+    const result = await run(
+      "node",
+      [path.join(process.cwd(), "dist/cli.js"), "sync", "--execute"],
+      {
+        cwd: harness.repo,
+        env: harness.env,
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain("Sync stack comments");
+    expect(result.stderr).not.toContain("Unexpected fake gh call");
+    expect(result.stdout).toContain("2 pushes, 1 PR, 2 comments");
+
+    const state = await readFakeGhState(harness);
+    expect(state.pullRequests).toHaveLength(2);
+    expect(state.pullRequests.find((pullRequest) => pullRequest.number === 13)).toMatchObject({
+      title: "feat/child",
+      baseRefName: "feat/base",
+    });
+  });
+});
+
+describe("jjacks navigation integration", () => {
+  it("moves down and back up through a real two-bookmark jj stack", async () => {
+    const harness = await createHarness();
+    await initializeRepo(harness, { childBookmark: "feat/child" });
+
+    const down = await run("node", [path.join(process.cwd(), "dist/cli.js"), "down"], {
+      cwd: harness.repo,
+      env: harness.env,
+    });
+    expect(down.stderr).toBe("");
+    expect(down.exitCode).toBe(0);
+    expect(down.stdout).toContain("jjacks down");
+    expect(down.stdout).toContain("feat/base");
+
+    const up = await run("node", [path.join(process.cwd(), "dist/cli.js"), "up"], {
+      cwd: harness.repo,
+      env: harness.env,
+    });
+    expect(up.stderr).toBe("");
+    expect(up.exitCode).toBe(0);
+    expect(up.stdout).toContain("jjacks up");
+    expect(up.stdout).toContain("feat/child");
   });
 });
