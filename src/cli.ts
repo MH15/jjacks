@@ -454,7 +454,14 @@ cli(process.argv).pipe(
   ),
   Effect.catchIf(
     (error): error is CliError => error instanceof CliError,
-    (error) => Console.error(error.message)
+    (error) =>
+      Console.error(error.message).pipe(
+        Effect.zipRight(
+          Effect.sync(() => {
+            process.exitCode = 1;
+          })
+        )
+      )
   ),
   Effect.provide(Layer.mergeAll(sharedLayer, NodeContext.layer)),
   NodeRuntime.runMain

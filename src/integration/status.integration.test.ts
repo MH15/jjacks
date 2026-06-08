@@ -2,15 +2,25 @@ import { execFile as execFileCallback } from "node:child_process";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it } from "vitest";
-
-const execFile = promisify(execFileCallback);
 
 type CommandResult = {
   readonly stdout: string;
   readonly stderr: string;
+  readonly exitCode: number;
+};
+
+type FakePullRequest = {
+  readonly number: number;
+  readonly url: string;
+  readonly title: string;
+  readonly headRefName: string;
+  readonly headRepositoryOwner: string;
+  readonly baseRefName: string;
+  readonly state: "OPEN" | "MERGED" | "CLOSED";
+  readonly isDraft: boolean;
+  readonly body: string;
 };
 
 type IntegrationHarness = {
@@ -31,19 +41,36 @@ const run = async (
   options: {
     readonly cwd: string;
     readonly env?: NodeJS.ProcessEnv;
+    readonly allowFailure?: boolean;
   }
-): Promise<CommandResult> => {
-  const result = await execFile(command, [...args], {
-    cwd: options.cwd,
-    env: options.env,
-    maxBuffer: 1024 * 1024
-  });
+): Promise<CommandResult> =>
+  new Promise((resolve, reject) => {
+    execFileCallback(command, [...args], {
+      cwd: options.cwd,
+      env: options.env,
+      maxBuffer: 1024 * 1024
+    }, (error, stdout, stderr) => {
+      const exitCode =
+        error !== null && "code" in error && typeof error.code === "number"
+          ? error.code
+          : error === null
+            ? 0
+            : 1;
 
-  return {
-    stdout: result.stdout,
-    stderr: result.stderr
-  };
-};
+      const result = {
+        stdout,
+        stderr,
+        exitCode
+      };
+
+      if (error !== null && options.allowFailure !== true) {
+        reject(error);
+        return;
+      }
+
+      resolve(result);
+    });
+  });
 
 const fakeGhScript = `#!/usr/bin/env node
 import { readFileSync } from "node:fs";
@@ -75,7 +102,9 @@ console.error(\`Unexpected fake gh call: gh \${args.join(" ")}\`);
 process.exit(1);
 `;
 
-const createHarness = async (): Promise<IntegrationHarness> => {
+const createHarness = async (options?: {
+  readonly pullRequests?: ReadonlyArray<FakePullRequest>;
+}): Promise<IntegrationHarness> => {
   const root = await mkdtemp(path.join(os.tmpdir(), "jjacks-integration-"));
   const repo = path.join(root, "repo");
   const origin = path.join(root, "origin.git");
@@ -102,7 +131,7 @@ const createHarness = async (): Promise<IntegrationHarness> => {
   await writeFile(
     fakeGhStatePath,
     JSON.stringify({
-      pullRequests: [
+      pullRequests: options?.pullRequests ?? [
         {
           number: 12,
           url: "https://github.com/MH15/jjacks/pull/12",
@@ -145,8 +174,13 @@ const createHarness = async (): Promise<IntegrationHarness> => {
   return harness;
 };
 
-const initializeRepo = async (harness: IntegrationHarness): Promise<void> => {
-  await run("git", ["init"], { cwd: harness.repo, env: harness.env });
+const initializeRepo = async (
+  harness: IntegrationHarness,
+  options?: {
+    readonly childBookmark?: string;
+  }
+): Promise<void> => {
+  await run("git", ["init", "--initial-branch", "main"], { cwd: harness.repo, env: harness.env });
   await run("git", ["config", "user.name", "Integration Test"], { cwd: harness.repo, env: harness.env });
   await run("git", ["config", "user.email", "integration@example.com"], { cwd: harness.repo, env: harness.env });
   await writeFile(path.join(harness.repo, "README.md"), "hello\n");
@@ -155,10 +189,16 @@ const initializeRepo = async (harness: IntegrationHarness): Promise<void> => {
   await run("git", ["init", "--bare", harness.origin], { cwd: harness.root, env: harness.env });
   await run("git", ["remote", "add", "origin", harness.origin], { cwd: harness.repo, env: harness.env });
   await run("git", ["push", "-u", "origin", "main"], { cwd: harness.repo, env: harness.env });
-  await run("git", ["remote", "set-head", "origin", "-a"], { cwd: harness.repo, env: harness.env });
+  await run("git", ["remote", "set-head", "origin", "main"], { cwd: harness.repo, env: harness.env });
   await run("jj", ["git", "init", "--colocate"], { cwd: harness.repo, env: harness.env });
   await run("jj", ["new", "-m", "feat/base"], { cwd: harness.repo, env: harness.env });
   await run("jj", ["bookmark", "create", "feat/base"], { cwd: harness.repo, env: harness.env });
+  if (options?.childBookmark !== undefined) {
+    await run("jj", ["new", "-m", options.childBookmark], { cwd: harness.repo, env: harness.env });
+    await run("jj", ["bookmark", "set", "feat/base", "-r", "@-"], { cwd: harness.repo, env: harness.env });
+    await writeFile(path.join(harness.repo, "child.txt"), "child\n");
+    await run("jj", ["bookmark", "create", options.childBookmark], { cwd: harness.repo, env: harness.env });
+  }
 };
 
 afterEach(async () => {
@@ -176,6 +216,7 @@ describe("jjacks status integration", () => {
     });
 
     expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("stack");
     expect(result.stdout).toContain("pull requests");
     expect(result.stdout).toContain("current entries: 1");
@@ -183,5 +224,69 @@ describe("jjacks status integration", () => {
     expect(result.stdout).toContain("not pushed");
     expect(result.stdout).toContain("PR #12");
     expect(result.stdout).toContain("base: main");
+  });
+
+  it("fails loudly when fake GitHub returns multiple open PRs for one branch", async () => {
+    const harness = await createHarness({
+      pullRequests: [
+        {
+          number: 12,
+          url: "https://github.com/MH15/jjacks/pull/12",
+          title: "first",
+          headRefName: "feat/base",
+          headRepositoryOwner: "alice",
+          baseRefName: "main",
+          state: "OPEN",
+          isDraft: false,
+          body: ""
+        },
+        {
+          number: 13,
+          url: "https://github.com/MH15/jjacks/pull/13",
+          title: "second",
+          headRefName: "feat/base",
+          headRepositoryOwner: "bob",
+          baseRefName: "main",
+          state: "OPEN",
+          isDraft: false,
+          body: ""
+        }
+      ]
+    });
+    await initializeRepo(harness);
+
+    const result = await run("node", [path.join(process.cwd(), "dist/cli.js"), "status"], {
+      cwd: harness.repo,
+      env: harness.env,
+      allowFailure: true
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("Multiple open pull requests found for branch feat/base");
+    expect(result.stderr).toContain("PR #12 alice:feat/base");
+    expect(result.stderr).toContain("PR #13 bob:feat/base");
+  });
+});
+
+describe("jjacks sync integration", () => {
+  it("renders a dry-run sync plan for a real two-bookmark jj stack with fake GitHub", async () => {
+    const harness = await createHarness();
+    await initializeRepo(harness, { childBookmark: "feat/child" });
+
+    const result = await run("node", [path.join(process.cwd(), "dist/cli.js"), "sync", "--dry-run"], {
+      cwd: harness.repo,
+      env: harness.env
+    });
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("jjacks sync plan");
+    expect(result.stdout).toContain("github");
+    expect(result.stdout).toContain("feat/base");
+    expect(result.stdout).toContain("PR #12");
+    expect(result.stdout).toContain("- push bookmark");
+    expect(result.stdout).toContain("feat/child");
+    expect(result.stdout).toContain("- create PR with base feat/base");
   });
 });
