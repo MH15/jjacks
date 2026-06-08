@@ -65,6 +65,180 @@ describe("JjService.editWorkingCopyOnStack", () => {
   });
 });
 
+describe("JjService.getLocalBookmarkSnapshot", () => {
+  it("returns bookmark commit metadata when the bookmark exists", async () => {
+    const processLayer = makeProcessLayer((_command, args) => {
+      if (args[0] === "config") {
+        return { stdout: "true", stderr: "", exitCode: 0 };
+      }
+
+      if (args[0] === "log") {
+        return {
+          stdout: "change123\tabc123\tparent\tabc-diff\tcoworker branch\tjjacks",
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    const snapshot = await Effect.runPromise(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        return yield* jjService.getLocalBookmarkSnapshot("feat/coworker");
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive))),
+    );
+
+    expect(snapshot).toEqual({
+      changeId: "change123",
+      commitId: "abc123",
+      parentCommitIds: ["parent"],
+      diffHash: "abc-diff",
+      description: "coworker branch",
+    });
+  });
+
+  it("returns undefined when the bookmark does not exist", async () => {
+    const processLayer = makeProcessLayer((_command, args) => {
+      if (args[0] === "config") {
+        return { stdout: "true", stderr: "", exitCode: 0 };
+      }
+
+      if (args[0] === "log") {
+        return {
+          stdout: "",
+          stderr: "Revision doesn't exist",
+          exitCode: 1,
+        };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    const snapshot = await Effect.runPromise(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        return yield* jjService.getLocalBookmarkSnapshot("feat/coworker");
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive))),
+    );
+
+    expect(snapshot).toBeUndefined();
+  });
+});
+
+describe("JjService.importRemoteBookmarkAsMutable", () => {
+  it("duplicates the remote bookmark and moves the local bookmark to the mutable copy", async () => {
+    const calls: Array<ReadonlyArray<string>> = [];
+
+    const processLayer = makeProcessLayer((_command, args) => {
+      calls.push(args);
+
+      if (args[0] === "config") {
+        return { stdout: "true", stderr: "", exitCode: 0 };
+      }
+
+      if (args[0] === "duplicate") {
+        return {
+          stdout: "Duplicated a9e4d5fe32f6 as toyuxusw 957733a2 Add demo branch",
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+
+      if (args[0] === "bookmark" && (args[1] === "track" || args[1] === "set")) {
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        yield* jjService.importRemoteBookmarkAsMutable("feat/coworker");
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive))),
+    );
+
+    expect(
+      calls.some((args) => args.join(" ") === "bookmark track feat/coworker --remote origin"),
+    ).toBe(true);
+    expect(calls.some((args) => args.join(" ") === "duplicate feat/coworker@origin")).toBe(true);
+    expect(
+      calls.some(
+        (args) => args.join(" ") === "bookmark set feat/coworker -r toyuxusw --allow-backwards",
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("JjService.trackRemoteBookmarkToLocal", () => {
+  it("tracks the remote bookmark and restores the bookmark to the mutable local change", async () => {
+    const calls: Array<ReadonlyArray<string>> = [];
+
+    const processLayer = makeProcessLayer((_command, args) => {
+      calls.push(args);
+
+      if (args[0] === "config") {
+        return { stdout: "true", stderr: "", exitCode: 0 };
+      }
+
+      if (args[0] === "bookmark" && (args[1] === "track" || args[1] === "set")) {
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        yield* jjService.trackRemoteBookmarkToLocal("feat/coworker", "localchange");
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive))),
+    );
+
+    expect(
+      calls.some((args) => args.join(" ") === "bookmark track feat/coworker --remote origin"),
+    ).toBe(true);
+    expect(
+      calls.some(
+        (args) => args.join(" ") === "bookmark set feat/coworker -r localchange --allow-backwards",
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("JjService.setBookmarkToRemote", () => {
+  it("sets the local bookmark to the origin bookmark", async () => {
+    const calls: Array<ReadonlyArray<string>> = [];
+
+    const processLayer = makeProcessLayer((_command, args) => {
+      calls.push(args);
+
+      if (args[0] === "config") {
+        return { stdout: "true", stderr: "", exitCode: 0 };
+      }
+
+      if (args[0] === "bookmark" && args[1] === "set") {
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        yield* jjService.setBookmarkToRemote("feat/coworker");
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive))),
+    );
+
+    expect(
+      calls.some((args) => args.join(" ") === "bookmark set feat/coworker -r feat/coworker@origin"),
+    ).toBe(true);
+  });
+});
+
 describe("JjService.editWorkingCopyOnBookmark", () => {
   it("edits the requested bookmark instead of creating a continuation", async () => {
     const calls: Array<ReadonlyArray<string>> = [];

@@ -10,6 +10,9 @@ export class RepoService extends Context.Tag("RepoService")<
   RepoService,
   {
     readonly fetchOrigin: Effect.Effect<void, CliError, ProcessService>;
+    readonly findRemoteHead: (
+      branchName: string,
+    ) => Effect.Effect<string | undefined, CliError, ProcessService>;
     readonly getRepoInfo: Effect.Effect<RepoInfoType, CliError, ProcessService>;
   }
 >() {}
@@ -40,6 +43,32 @@ const make = {
     const process = yield* ProcessService;
     yield* process.run("git", ["fetch", "origin"]);
   }),
+
+  findRemoteHead: (branchName: string) =>
+    Effect.gen(function* () {
+      const process = yield* ProcessService;
+      const result = yield* process.run("git", ["ls-remote", "--heads", "origin", branchName], {
+        allowNonZeroExit: true,
+      });
+
+      if (result.exitCode !== 0) {
+        return yield* Effect.fail(
+          new CliError(
+            [`Failed to inspect origin/${branchName}.`, result.stderr, result.stdout]
+              .filter(Boolean)
+              .join("\n"),
+          ),
+        );
+      }
+
+      const firstLine = result.stdout.split("\n").find(Boolean);
+      if (firstLine === undefined) {
+        return undefined;
+      }
+
+      const [commitId] = firstLine.split(/\s+/);
+      return commitId;
+    }),
 
   getRepoInfo: Effect.gen(function* () {
     const process = yield* ProcessService;

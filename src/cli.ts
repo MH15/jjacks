@@ -6,6 +6,7 @@ import { Console, Effect, Layer, Option } from "effect";
 
 import { resolveDiffFormat } from "./diff";
 import { CliError } from "./errors";
+import { buildGetPlan, ensureSupportedGetBranchName } from "./get";
 import { resolveBookmarkMovePlan } from "./navigation";
 import { analyzeReviewStack, buildSyncPlanFromStatus } from "./stack";
 import { resolveSyncMode } from "./sync-mode";
@@ -13,6 +14,7 @@ import {
   formatMergeConfirmationMessage,
   renderDoctor,
   renderExecuteSummary,
+  renderGetPlan,
   renderStatus,
   renderSyncPreview,
 } from "./text";
@@ -77,6 +79,13 @@ const create = Command.make("create", { bookmarkName }, ({ bookmarkName }) =>
   }),
 ).pipe(
   Command.withDescription("Open a new child jj change and bookmark it as the next stacked PR."),
+);
+
+const getBranchName = Args.text({ name: "branch-name" }).pipe(
+  Args.withDescription("Remote branch name to import as a local jj bookmark."),
+);
+const getDryRun = Options.boolean("dry-run").pipe(
+  Options.withDescription("Print the get plan without fetching or editing local state."),
 );
 
 const promptError = (context: string, error: unknown): CliError => {
@@ -271,6 +280,78 @@ const diff = Command.make("diff", { against, summary, stat }, ({ against, summar
   ),
 );
 
+const validateGetBranchName = (branchName: string) =>
+  Effect.try({
+    try: () => ensureSupportedGetBranchName(branchName),
+    catch: (error) =>
+      error instanceof CliError
+        ? error
+        : new CliError(`Invalid branch name${error instanceof Error ? `: ${error.message}` : "."}`),
+  });
+
+const get = Command.make(
+  "get",
+  { branchName: getBranchName, dryRun: getDryRun },
+  ({ branchName, dryRun }) =>
+    Effect.gen(function* () {
+      yield* validateGetBranchName(branchName);
+
+      const repo = yield* RepoService;
+      const jjService = yield* JjService;
+      const remoteCommitId = yield* repo.findRemoteHead(branchName);
+      if (remoteCommitId === undefined) {
+        return yield* Effect.fail(
+          new CliError(`Remote branch origin/${branchName} was not found.`),
+        );
+      }
+
+      const local = yield* jjService.getLocalBookmarkSnapshot(branchName);
+      const knownRemote = yield* jjService.getRemoteBookmarkSnapshot(branchName);
+      const plan = buildGetPlan({
+        branchName,
+        ...(local === undefined ? {} : { local }),
+        remote:
+          knownRemote?.commitId === remoteCommitId
+            ? knownRemote
+            : {
+                changeId: "",
+                commitId: remoteCommitId,
+                parentCommitIds: [],
+                diffHash: "",
+              },
+      });
+
+      yield* Console.log(renderGetPlan(plan));
+
+      if (dryRun) {
+        return;
+      }
+
+      yield* ensureInteractiveTerminal(`Getting ${branchName}`);
+      const confirmed = yield* promptForGetConfirmation(plan);
+      if (!confirmed) {
+        yield* Console.log("get canceled");
+        return;
+      }
+
+      yield* repo.fetchOrigin;
+      const remote = yield* jjService.getRemoteBookmarkSnapshot(branchName);
+      if (remote === undefined) {
+        return yield* Effect.fail(
+          new CliError(`Remote bookmark ${branchName}@origin was not found after fetching origin.`),
+        );
+      }
+
+      if (plan.needsMutableImport) {
+        yield* jjService.importRemoteBookmarkAsMutable(branchName);
+      } else if (plan.local !== undefined) {
+        yield* jjService.trackRemoteBookmarkToLocal(branchName, plan.local.changeId);
+      }
+      const workingCopyLog = yield* jjService.moveToBookmark(branchName);
+      yield* Console.log([`got ${branchName}`, "", "current jj state", workingCopyLog].join("\n"));
+    }),
+).pipe(Command.withDescription("Import a single remote branch as a local jj bookmark."));
+
 const execute = Options.boolean("execute").pipe(
   Options.withDescription(
     "Apply sync actions immediately without an interactive confirmation prompt.",
@@ -293,6 +374,23 @@ const promptForSyncConfirmation = Effect.tryPromise({
     ),
   catch: (error) => promptError("Sync confirmation", error),
 });
+
+const promptForGetConfirmation = (plan: ReturnType<typeof buildGetPlan>) =>
+  Effect.tryPromise({
+    try: () =>
+      confirm(
+        {
+          message: plan.willOverwriteLocal
+            ? `Overwrite local bookmark ${plan.branchName} with origin/${plan.branchName}?`
+            : "Apply this get plan?",
+          default: !plan.willOverwriteLocal,
+        },
+        {
+          clearPromptOnDone: true,
+        },
+      ),
+    catch: (error) => promptError("Get confirmation", error),
+  });
 
 const promptForMergeConfirmation = (message: string) =>
   Effect.tryPromise({
@@ -583,7 +681,9 @@ const root = Command.make("jjacks", {}, () => Console.log("Use a subcommand."))
       "Sync the current jj bookmark stack to GitHub in a Graphite-like workflow.",
     ),
   )
-  .pipe(Command.withSubcommands([doctor, status, create, up, u, down, d, log, diff, sync, merge]));
+  .pipe(
+    Command.withSubcommands([doctor, status, create, get, up, u, down, d, log, diff, sync, merge]),
+  );
 
 const cli = Command.run(root, {
   name: "jjacks",

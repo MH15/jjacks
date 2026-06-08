@@ -1,6 +1,7 @@
 import chalk, { Chalk } from "chalk";
 
 import type { ExecuteSyncResult, PullRequestSummary, StackStatusEntry, SyncPlan } from "./domain";
+import type { GetPlan } from "./get";
 
 const formatLabel = (label: string): string => chalk.gray(`${label}:`);
 
@@ -211,6 +212,18 @@ export const renderExecuteSummary = (result: ExecuteSyncResult): string => {
 
   return [summary, warningSummary].filter(Boolean).join("\n");
 };
+
+export const renderGetPlan = (plan: GetPlan): string =>
+  [
+    chalk.bold("jjacks get plan"),
+    "",
+    chalk.cyan(plan.branchName),
+    `- remote: ${plan.remote.commitId}`,
+    ...(plan.local === undefined ? ["- local: not found"] : [`- local: ${plan.local.commitId}`]),
+    "",
+    ...(plan.willOverwriteLocal ? [chalk.yellow("local bookmark will be overwritten"), ""] : []),
+    ...plan.actions.map((action) => `- ${action}`),
+  ].join("\n");
 
 export const formatMergeConfirmationMessage = ({
   bookmarkName,
