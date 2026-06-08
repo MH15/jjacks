@@ -211,3 +211,19 @@ export const renderExecuteSummary = (result: ExecuteSyncResult): string => {
 
   return [summary, warningSummary].filter(Boolean).join("\n");
 };
+
+export const formatMergeConfirmationMessage = ({
+  bookmarkName,
+  pullRequest,
+}: {
+  readonly bookmarkName: string;
+  readonly pullRequest: PullRequestSummary;
+}): string =>
+  [
+    "Merge the bottom PR in this stack?",
+    `PR #${pullRequest.number}: ${pullRequest.title}`,
+    `bookmark: ${bookmarkName}`,
+    pullRequest.url,
+    "",
+    "Confirm merge",
+  ].join("\n");
