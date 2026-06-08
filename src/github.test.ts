@@ -192,6 +192,31 @@ describe("GitHubService.createPullRequest", () => {
   });
 });
 
+describe("GitHubService.mergePullRequestWhenReady", () => {
+  it("asks GitHub to merge when repository requirements are satisfied", async () => {
+    const calls: Array<ReadonlyArray<string>> = [];
+    const processLayer = Layer.succeed(ProcessService, {
+      run: (_command: string, args: ReadonlyArray<string>) => {
+        calls.push(args);
+        return Effect.succeed({
+          stdout: "",
+          stderr: "",
+          exitCode: 0
+        });
+      }
+    });
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const github = yield* GitHubService;
+        yield* github.mergePullRequestWhenReady(42);
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, GitHubServiceLive)))
+    );
+
+    expect(calls).toEqual([["pr", "merge", "42", "--squash", "--auto"]]);
+  });
+});
+
 describe("GitHubService.listIssueComments", () => {
   it("returns a CliError when gh emits malformed JSON", async () => {
     const processLayer = Layer.succeed(ProcessService, {

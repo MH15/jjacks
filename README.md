@@ -18,6 +18,7 @@ Why do we need another stacking tool? There's already [Graphite](https://graphit
 - `jjacks diff`
 - `jjacks sync`
 - `jjacks sync --execute`
+- `jjacks merge`
 
 ## Docs
 

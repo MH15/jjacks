@@ -25,6 +25,7 @@ export class GitHubService extends Context.Tag("GitHubService")<
       readonly title?: string;
       readonly body?: string;
     }) => Effect.Effect<void, CliError, ProcessService>;
+    readonly mergePullRequestWhenReady: (pullRequestNumber: number) => Effect.Effect<void, CliError, ProcessService>;
     readonly listIssueComments: (
       pullRequestNumber: number
     ) => Effect.Effect<ReadonlyArray<PullRequestCommentType>, CliError, ProcessService>;
@@ -255,6 +256,12 @@ const make = {
 
       const process = yield* ProcessService;
       yield* process.run("gh", args);
+    }),
+
+  mergePullRequestWhenReady: (pullRequestNumber: number) =>
+    Effect.gen(function* () {
+      const process = yield* ProcessService;
+      yield* process.run("gh", ["pr", "merge", String(pullRequestNumber), "--squash", "--auto"]);
     }),
 
   listIssueComments: (pullRequestNumber: number) =>
