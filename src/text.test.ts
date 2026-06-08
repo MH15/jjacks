@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import type { ExecuteSyncResult, SyncPlan } from "../src/domain";
-import { renderDoctor, renderExecuteSummary, renderStatus, renderSyncPreview } from "../src/text";
+import {
+  formatMergeConfirmationMessage,
+  renderDoctor,
+  renderExecuteSummary,
+  renderStatus,
+  renderSyncPreview,
+} from "../src/text";
 
 const plan: SyncPlan = {
   localActions: ["fetch origin", "move main to main@origin"],
@@ -258,5 +264,34 @@ describe("renderExecuteSummary", () => {
     expect(output).toContain("1 push, 1 PR, 1 comment");
     expect(output).toContain("warnings:");
     expect(output).toContain("failed to sync stack comment for PR #12");
+  });
+});
+
+describe("formatMergeConfirmationMessage", () => {
+  it("shows the PR title, bookmark name, and confirmation prompt on its own line", () => {
+    const output = formatMergeConfirmationMessage({
+      bookmarkName: "feat/base",
+      pullRequest: {
+        number: 12,
+        url: "https://github.com/MH15/jjacks/pull/12",
+        title: "Add base workflow",
+        headRefName: "feat/base",
+        baseRefName: "main",
+        state: "OPEN",
+        isDraft: false,
+        body: "",
+      },
+    });
+
+    expect(output).toBe(
+      [
+        "Merge the bottom PR in this stack?",
+        "PR #12: Add base workflow",
+        "bookmark: feat/base",
+        "https://github.com/MH15/jjacks/pull/12",
+        "",
+        "Confirm merge",
+      ].join("\n"),
+    );
   });
 });

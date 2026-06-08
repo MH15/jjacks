@@ -9,7 +9,13 @@ import { CliError } from "./errors";
 import { resolveBookmarkMovePlan } from "./navigation";
 import { analyzeReviewStack, buildSyncPlanFromStatus } from "./stack";
 import { resolveSyncMode } from "./sync-mode";
-import { renderDoctor, renderExecuteSummary, renderStatus, renderSyncPreview } from "./text";
+import {
+  formatMergeConfirmationMessage,
+  renderDoctor,
+  renderExecuteSummary,
+  renderStatus,
+  renderSyncPreview,
+} from "./text";
 import { GitServiceLive } from "./services/GitService";
 import { GitHubService, GitHubServiceLive } from "./services/GitHubService";
 import { JjService, JjServiceLive } from "./services/JjService";
@@ -288,12 +294,12 @@ const promptForSyncConfirmation = Effect.tryPromise({
   catch: (error) => promptError("Sync confirmation", error),
 });
 
-const promptForMergeConfirmation = (pullRequestUrl: string) =>
+const promptForMergeConfirmation = (message: string) =>
   Effect.tryPromise({
     try: () =>
       confirm(
         {
-          message: `Merging the bottom PR in this stack: ${pullRequestUrl}`,
+          message,
           default: false,
         },
         {
@@ -552,7 +558,12 @@ const merge = Command.make("merge", {}, () =>
       );
     }
 
-    const confirmed = yield* promptForMergeConfirmation(pullRequest.url);
+    const confirmed = yield* promptForMergeConfirmation(
+      formatMergeConfirmationMessage({
+        bookmarkName: bottomEntry.entry.name,
+        pullRequest,
+      }),
+    );
     if (!confirmed) {
       yield* Console.log("merge canceled");
       return;
