@@ -9,6 +9,12 @@ import { JjService } from "./JjService";
 import { ProcessService } from "./ProcessService";
 import { RepoService } from "./RepoService";
 
+export interface PreparedSyncState {
+  readonly defaultBranch: string;
+  readonly entries: ReadonlyArray<StackStatusEntry>;
+  readonly preparedAtMs: number;
+}
+
 export class StackService extends Context.Tag("StackService")<
   StackService,
   {
@@ -26,6 +32,11 @@ export class StackService extends Context.Tag("StackService")<
       JjService | GitHubService | GitService | RepoService | ProcessService
     >;
     readonly prepareSync: Effect.Effect<
+      PreparedSyncState,
+      import("../errors").CliError,
+      JjService | GitHubService | GitService | RepoService | ProcessService
+    >;
+    readonly refreshLocalStack: Effect.Effect<
       {
         readonly defaultBranch: string;
         readonly entries: ReadonlyArray<StackStatusEntry>;
@@ -33,7 +44,7 @@ export class StackService extends Context.Tag("StackService")<
       import("../errors").CliError,
       JjService | GitHubService | GitService | RepoService | ProcessService
     >;
-    readonly refreshLocalStack: Effect.Effect<
+    readonly refreshLocalStackFromPrepared: (prepared: PreparedSyncState) => Effect.Effect<
       {
         readonly defaultBranch: string;
         readonly entries: ReadonlyArray<StackStatusEntry>;
@@ -162,16 +173,20 @@ const prepareSync = Effect.gen(function* () {
 
   return {
     defaultBranch: repoInfo.defaultBranch ?? "main",
-    entries
+    entries,
+    preparedAtMs: Date.now()
   };
 });
 
-const refreshLocalStack = Effect.gen(function* () {
+const refreshLocalStackWithInitialState = ({
+  defaultBranch,
+  initialEntries
+}: {
+  readonly defaultBranch: string;
+  readonly initialEntries: ReadonlyArray<StackStatusEntry>;
+}) => Effect.gen(function* () {
   const repo = yield* RepoService;
   const jj = yield* JjService;
-  const repoInfo = yield* repo.getRepoInfo;
-  const defaultBranch = repoInfo.defaultBranch ?? "main";
-  const initialEntries = yield* getCurrentStatusEntries;
   const initialAnalysis = analyzeReviewStack(initialEntries, defaultBranch);
 
   if (initialAnalysis.completionState === "empty") {
@@ -204,6 +219,24 @@ const refreshLocalStack = Effect.gen(function* () {
     entries: yield* getCurrentStatusEntries
   };
 });
+
+const refreshLocalStack = Effect.gen(function* () {
+  const repo = yield* RepoService;
+  const repoInfo = yield* repo.getRepoInfo;
+  const defaultBranch = repoInfo.defaultBranch ?? "main";
+  const initialEntries = yield* getCurrentStatusEntries;
+
+  return yield* refreshLocalStackWithInitialState({
+    defaultBranch,
+    initialEntries
+  });
+});
+
+const refreshLocalStackFromPrepared = (prepared: PreparedSyncState) =>
+  refreshLocalStackWithInitialState({
+    defaultBranch: prepared.defaultBranch,
+    initialEntries: prepared.entries
+  });
 
 const syncableEntries = (entries: ReadonlyArray<StackStatusEntry>): ReadonlyArray<StackStatusEntry> =>
   analyzeReviewStack(entries, "main").syncableEntries;
@@ -483,6 +516,7 @@ const make = {
 
   prepareSync,
   refreshLocalStack,
+  refreshLocalStackFromPrepared,
   ensureSyncDescriptions,
   pushSyncBookmarks,
   reconcileSyncPullRequests,

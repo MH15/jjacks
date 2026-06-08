@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Cause, Effect, Layer } from "effect";
 
-import type { RepoInfo, StackEntry } from "../src/domain";
+import type { RepoInfo, StackEntry, StackStatusEntry } from "../src/domain";
 import { CliError } from "../src/errors";
 import { analyzeReviewStack, buildSyncPlanFromStatus, renderStackComment, stackCommentMarker, upsertStackCommentInBody } from "../src/stack";
 import { orderStackNodes, selectCurrentBookmarkTree } from "../src/services/JjService";
@@ -698,6 +698,115 @@ describe("StackService with injected fakes", () => {
     expect(result.statusEntries.every((entry) => entry.remoteBranchExists)).toBe(true);
     expect(result.statusEntries[1]?.pullRequest?.headRefName).toBe("feat/ui");
     expect(harness.describedBookmarks).toEqual([]);
+  });
+
+  it("reuses prepared status when refreshing the interactive sync path", async () => {
+    const events: Array<string> = [];
+    const preparedEntries: ReadonlyArray<StackStatusEntry> = [
+      {
+        entry: stack[0]!,
+        pullRequest: {
+          number: 12,
+          url: "https://github.com/MH15/jjacks/pull/12",
+          title: "feat/base",
+          headRefName: "feat/base",
+          baseRefName: "main",
+          state: "OPEN",
+          isDraft: false,
+          body: ""
+        },
+        remoteBranchExists: true,
+        needsBookmarkPush: false
+      },
+      {
+        entry: stack[1]!,
+        pullRequest: null,
+        remoteBranchExists: false,
+        needsBookmarkPush: true
+      }
+    ];
+
+    const jjLayer = Layer.succeed(JjService, {
+      ensureAdvanceBookmarksEnabled: Effect.void,
+      getStackCommentLocation: Effect.succeed("comment" as const),
+      getCurrentStack: Effect.succeed(stack),
+      getCurrentTree: Effect.sync(() => {
+        events.push("status");
+        return stack;
+      }),
+      getTrackedBookmarks: Effect.succeed(stack),
+      ensureBookmarkDescription: () => Effect.void,
+      createBookmark: () => Effect.void,
+      moveToBookmark: () => Effect.succeed(""),
+      moveUp: Effect.succeed(""),
+      moveDown: Effect.succeed(""),
+      syncBookmarkToRemote: () =>
+        Effect.sync(() => {
+          events.push("move-main");
+        }),
+      editWorkingCopyOnStack: () =>
+        Effect.sync(() => {
+          events.push("edit-stack");
+          return "";
+        }),
+      editWorkingCopyOnBookmark: () => Effect.succeed(""),
+      logBookmarks: () => Effect.succeed(""),
+      diffCurrentStack: () => Effect.succeed("")
+    });
+
+    const repoLayer = Layer.succeed(RepoService, {
+      fetchOrigin: Effect.sync(() => {
+        events.push("fetch");
+      }),
+      getRepoInfo: Effect.die("repo info should come from prepared sync state.")
+    });
+
+    const githubLayer = Layer.succeed(GitHubService, {
+      findPullRequestsByHeads: () => Effect.succeed(new Map([["feat/base", preparedEntries[0]!.pullRequest!]])),
+      findPullRequestByHead: () => Effect.succeed(null),
+      createPullRequest: () => Effect.die("createPullRequest should not run during local refresh."),
+      updatePullRequest: () => Effect.void,
+      listIssueComments: () => Effect.succeed([]),
+      createIssueComment: () => Effect.void,
+      updateIssueComment: () => Effect.void
+    });
+
+    const gitLayer = Layer.succeed(GitService, {
+      getBookmarksRemoteState: (bookmarkNames: ReadonlyArray<string>) =>
+        Effect.succeed(new Map(bookmarkNames.map((bookmarkName) => [
+          bookmarkName,
+          {
+            remoteBranchExists: bookmarkName === "feat/base",
+            needsBookmarkPush: bookmarkName !== "feat/base"
+          }
+        ]))),
+      getBookmarkRemoteState: () =>
+        Effect.succeed({
+          remoteBranchExists: true,
+          needsBookmarkPush: false
+        }),
+      pushBookmarks: () => Effect.void,
+      pushBookmark: () => Effect.void
+    });
+
+    const processLayer = Layer.succeed(ProcessService, {
+      run: () =>
+        Effect.die("ProcessService should not be used when fake JJ/GitHub/Repo services are provided.")
+    });
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const stackService = yield* StackService;
+        return yield* stackService.refreshLocalStackFromPrepared({
+          defaultBranch: "main",
+          entries: preparedEntries,
+          preparedAtMs: Date.now()
+        });
+      }).pipe(Effect.provide(Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive)))
+    );
+
+    expect(events[0]).toBe("fetch");
+    expect(events).toEqual(["fetch", "move-main", "status", "edit-stack", "status"]);
   });
 
   it("updates existing PR metadata instead of creating a duplicate", async () => {
