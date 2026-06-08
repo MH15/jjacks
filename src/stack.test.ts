@@ -509,7 +509,7 @@ describe("StackService with injected fakes", () => {
         isCurrent: true,
       },
     ];
-    const editedBookmarks: Array<string> = [];
+    const trunkContinuations: Array<string> = [];
 
     const jjLayer = Layer.succeed(JjService, {
       ensureAdvanceBookmarksEnabled: Effect.void,
@@ -521,17 +521,18 @@ describe("StackService with injected fakes", () => {
         Effect.die("ensureBookmarkDescription should not run for a completed stack."),
       createBookmark: () => Effect.void,
       moveToBookmark: () => Effect.succeed(""),
-      moveToTrunkContinuation: () => Effect.succeed(""),
+      moveToTrunkContinuation: (defaultBranch) =>
+        Effect.sync(() => {
+          trunkContinuations.push(defaultBranch);
+          return "";
+        }),
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
       editWorkingCopyOnStack: () =>
         Effect.die("editWorkingCopyOnStack should not run for a completed stack."),
-      editWorkingCopyOnBookmark: ({ bookmarkName }) =>
-        Effect.sync(() => {
-          editedBookmarks.push(bookmarkName);
-          return "";
-        }),
+      editWorkingCopyOnBookmark: () =>
+        Effect.die("editWorkingCopyOnBookmark should not run for a completed stack."),
       logBookmarks: () => Effect.die("logBookmarks should not be used in this test."),
       diffCurrentStack: () => Effect.succeed(""),
     });
@@ -613,7 +614,7 @@ describe("StackService with injected fakes", () => {
       ),
     );
 
-    expect(editedBookmarks).toEqual(["main"]);
+    expect(trunkContinuations).toEqual(["main"]);
     expect(result.plan.completionState).toBe("stack-complete");
     expect(result.plan.githubActions).toEqual([]);
     expect(result.createdPullRequestBookmarks).toEqual([]);
