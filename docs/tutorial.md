@@ -197,6 +197,16 @@ Or at repo scope:
 jj config set --repo jjacks.stack_comments.location description
 ```
 
+## Shell Completions
+
+`jjacks` can print shell completion scripts:
+
+```bash
+source <(jjacks --completions zsh)
+source <(jjacks --completions bash)
+jjacks --completions fish | source
+```
+
 ## Common Flow
 
 ### 1. Start from clean trunk
@@ -232,6 +242,24 @@ jjacks create feat/my-follow-up
 ```
 
 The intent is one bookmark per reviewable PR layer.
+
+### Getting A Remote Branch
+
+If someone else pushed a branch and you want to bring it into your local `jj` workspace, run:
+
+```bash
+jjacks get feat/coworker-branch
+```
+
+`get` supports one branch at a time. It prints a plan and asks before it fetches, creates or moves the local bookmark, and edits the working copy to that bookmark.
+
+For a non-mutating preview:
+
+```bash
+jjacks get feat/coworker-branch --dry-run
+```
+
+If a local bookmark with the same name exists and points somewhere else, `get` can overwrite it after confirmation. That overwrite prompt defaults to `No`.
 
 ### 4. Review the sync plan
 

@@ -8,7 +8,13 @@ Why do we need another stacking tool? There's already [Graphite](https://graphit
 
 ## Install
 
-`jjacks` is packaged as a Node CLI. Until the first npm release is published, install from a local checkout:
+`jjacks` is packaged as a Node CLI. Install it globally:
+
+```bash
+npm install --global jjacks
+```
+
+For local development from a checkout:
 
 ```bash
 npm install
@@ -16,10 +22,14 @@ npm run build
 npm link
 ```
 
-After a package release, install it globally:
+## Shell Completions
+
+`jjacks` can generate shell completion scripts:
 
 ```bash
-npm install --global jjacks
+source <(jjacks --completions zsh)
+source <(jjacks --completions bash)
+jjacks --completions fish | source
 ```
 
 Requirements:
@@ -55,12 +65,33 @@ jj config set --repo jjacks.stack_comments.location description
 - `jjacks doctor`
 - `jjacks status`
 - `jjacks create <bookmark-name>`
+- `jjacks get <branch-name>`
 - `jjacks up`
+- `jjacks u`
 - `jjacks down`
+- `jjacks d`
+- `jjacks log`
 - `jjacks diff`
 - `jjacks sync`
+- `jjacks sync --dry-run`
 - `jjacks sync --execute`
 - `jjacks merge`
+
+## Getting Remote Branches
+
+Use `get` when someone else pushed a branch and you want to adopt it into your local `jj` workspace:
+
+```bash
+jjacks get feat/coworker-branch
+```
+
+`jjacks get <branch-name>` prints a plan and asks before fetching or editing local state. If a local bookmark with the same name already exists and points somewhere else, the prompt clearly says it will overwrite that bookmark and defaults to `No`.
+
+To preview without changing local state:
+
+```bash
+jjacks get feat/coworker-branch --dry-run
+```
 
 ## Sync Modes
 
