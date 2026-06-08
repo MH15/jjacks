@@ -16,9 +16,9 @@ export class RepoService extends Context.Tag("RepoService")<
 
 const decodeWithSchema = <A, I>(schema: Schema.Schema<A, I>, value: unknown, context: string) =>
   Schema.decodeUnknown(schema)(value).pipe(
-    Effect.mapError((error) =>
-      new CliError(`${context}\n${ParseResult.TreeFormatter.formatErrorSync(error)}`)
-    )
+    Effect.mapError(
+      (error) => new CliError(`${context}\n${ParseResult.TreeFormatter.formatErrorSync(error)}`),
+    ),
   );
 
 const parseRemote = (stdout: string): string | undefined => {
@@ -46,11 +46,15 @@ const make = {
 
     const root = yield* process.run("git", ["rev-parse", "--show-toplevel"]);
     const remote = yield* process.run("git", ["remote", "-v"], {
-      allowNonZeroExit: true
+      allowNonZeroExit: true,
     });
-    const defaultBranch = yield* process.run("git", ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], {
-      allowNonZeroExit: true
-    });
+    const defaultBranch = yield* process.run(
+      "git",
+      ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+      {
+        allowNonZeroExit: true,
+      },
+    );
 
     return yield* decodeWithSchema(
       RepoInfo,
@@ -61,11 +65,11 @@ const make = {
           : {}),
         ...(defaultBranch.exitCode === 0
           ? { defaultBranch: defaultBranch.stdout.replace(/^origin\//, "") }
-          : {})
+          : {}),
       },
-      "Failed to decode repo info"
+      "Failed to decode repo info",
     );
-  })
+  }),
 };
 
 export const RepoServiceLive = Layer.succeed(RepoService, make);

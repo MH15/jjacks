@@ -42,34 +42,39 @@ const run = async (
     readonly cwd: string;
     readonly env?: NodeJS.ProcessEnv;
     readonly allowFailure?: boolean;
-  }
+  },
 ): Promise<CommandResult> =>
   new Promise((resolve, reject) => {
-    execFileCallback(command, [...args], {
-      cwd: options.cwd,
-      env: options.env,
-      maxBuffer: 1024 * 1024
-    }, (error, stdout, stderr) => {
-      const exitCode =
-        error !== null && "code" in error && typeof error.code === "number"
-          ? error.code
-          : error === null
-            ? 0
-            : 1;
+    execFileCallback(
+      command,
+      [...args],
+      {
+        cwd: options.cwd,
+        env: options.env,
+        maxBuffer: 1024 * 1024,
+      },
+      (error, stdout, stderr) => {
+        const exitCode =
+          error !== null && "code" in error && typeof error.code === "number"
+            ? error.code
+            : error === null
+              ? 0
+              : 1;
 
-      const result = {
-        stdout,
-        stderr,
-        exitCode
-      };
+        const result = {
+          stdout,
+          stderr,
+          exitCode,
+        };
 
-      if (error !== null && options.allowFailure !== true) {
-        reject(error);
-        return;
-      }
+        if (error !== null && options.allowFailure !== true) {
+          reject(error);
+          return;
+        }
 
-      resolve(result);
-    });
+        resolve(result);
+      },
+    );
   });
 
 const fakeGhScript = `#!/usr/bin/env node
@@ -125,8 +130,8 @@ const createHarness = async (options?: {
       "[user]",
       'name = "Integration Test"',
       'email = "integration@example.com"',
-      ""
-    ].join("\n")
+      "",
+    ].join("\n"),
   );
   await writeFile(
     fakeGhStatePath,
@@ -141,10 +146,10 @@ const createHarness = async (options?: {
           baseRefName: "main",
           state: "OPEN",
           isDraft: false,
-          body: ""
-        }
-      ]
-    })
+          body: "",
+        },
+      ],
+    }),
   );
 
   const fakeGhPath = path.join(bin, "gh");
@@ -158,7 +163,7 @@ const createHarness = async (options?: {
     HOME: home,
     NO_COLOR: "1",
     PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}`,
-    XDG_CONFIG_HOME: xdgConfigHome
+    XDG_CONFIG_HOME: xdgConfigHome,
   };
 
   const harness = {
@@ -168,7 +173,7 @@ const createHarness = async (options?: {
     bin,
     fakeGhStatePath,
     jjConfigPath,
-    env
+    env,
   };
   harnesses.push(harness);
   return harness;
@@ -178,31 +183,51 @@ const initializeRepo = async (
   harness: IntegrationHarness,
   options?: {
     readonly childBookmark?: string;
-  }
+  },
 ): Promise<void> => {
   await run("git", ["init", "--initial-branch", "main"], { cwd: harness.repo, env: harness.env });
-  await run("git", ["config", "user.name", "Integration Test"], { cwd: harness.repo, env: harness.env });
-  await run("git", ["config", "user.email", "integration@example.com"], { cwd: harness.repo, env: harness.env });
+  await run("git", ["config", "user.name", "Integration Test"], {
+    cwd: harness.repo,
+    env: harness.env,
+  });
+  await run("git", ["config", "user.email", "integration@example.com"], {
+    cwd: harness.repo,
+    env: harness.env,
+  });
   await writeFile(path.join(harness.repo, "README.md"), "hello\n");
   await run("git", ["add", "README.md"], { cwd: harness.repo, env: harness.env });
   await run("git", ["commit", "-m", "initial"], { cwd: harness.repo, env: harness.env });
   await run("git", ["init", "--bare", harness.origin], { cwd: harness.root, env: harness.env });
-  await run("git", ["remote", "add", "origin", harness.origin], { cwd: harness.repo, env: harness.env });
+  await run("git", ["remote", "add", "origin", harness.origin], {
+    cwd: harness.repo,
+    env: harness.env,
+  });
   await run("git", ["push", "-u", "origin", "main"], { cwd: harness.repo, env: harness.env });
-  await run("git", ["remote", "set-head", "origin", "main"], { cwd: harness.repo, env: harness.env });
+  await run("git", ["remote", "set-head", "origin", "main"], {
+    cwd: harness.repo,
+    env: harness.env,
+  });
   await run("jj", ["git", "init", "--colocate"], { cwd: harness.repo, env: harness.env });
   await run("jj", ["new", "-m", "feat/base"], { cwd: harness.repo, env: harness.env });
   await run("jj", ["bookmark", "create", "feat/base"], { cwd: harness.repo, env: harness.env });
   if (options?.childBookmark !== undefined) {
     await run("jj", ["new", "-m", options.childBookmark], { cwd: harness.repo, env: harness.env });
-    await run("jj", ["bookmark", "set", "feat/base", "-r", "@-"], { cwd: harness.repo, env: harness.env });
+    await run("jj", ["bookmark", "set", "feat/base", "-r", "@-"], {
+      cwd: harness.repo,
+      env: harness.env,
+    });
     await writeFile(path.join(harness.repo, "child.txt"), "child\n");
-    await run("jj", ["bookmark", "create", options.childBookmark], { cwd: harness.repo, env: harness.env });
+    await run("jj", ["bookmark", "create", options.childBookmark], {
+      cwd: harness.repo,
+      env: harness.env,
+    });
   }
 };
 
 afterEach(async () => {
-  await Promise.all(harnesses.splice(0).map((harness) => rm(harness.root, { recursive: true, force: true })));
+  await Promise.all(
+    harnesses.splice(0).map((harness) => rm(harness.root, { recursive: true, force: true })),
+  );
 });
 
 describe("jjacks status integration", () => {
@@ -212,7 +237,7 @@ describe("jjacks status integration", () => {
 
     const result = await run("node", [path.join(process.cwd(), "dist/cli.js"), "status"], {
       cwd: harness.repo,
-      env: harness.env
+      env: harness.env,
     });
 
     expect(result.stderr).toBe("");
@@ -238,7 +263,7 @@ describe("jjacks status integration", () => {
           baseRefName: "main",
           state: "OPEN",
           isDraft: false,
-          body: ""
+          body: "",
         },
         {
           number: 13,
@@ -249,16 +274,16 @@ describe("jjacks status integration", () => {
           baseRefName: "main",
           state: "OPEN",
           isDraft: false,
-          body: ""
-        }
-      ]
+          body: "",
+        },
+      ],
     });
     await initializeRepo(harness);
 
     const result = await run("node", [path.join(process.cwd(), "dist/cli.js"), "status"], {
       cwd: harness.repo,
       env: harness.env,
-      allowFailure: true
+      allowFailure: true,
     });
 
     expect(result.exitCode).toBe(1);
@@ -274,10 +299,14 @@ describe("jjacks sync integration", () => {
     const harness = await createHarness();
     await initializeRepo(harness, { childBookmark: "feat/child" });
 
-    const result = await run("node", [path.join(process.cwd(), "dist/cli.js"), "sync", "--dry-run"], {
-      cwd: harness.repo,
-      env: harness.env
-    });
+    const result = await run(
+      "node",
+      [path.join(process.cwd(), "dist/cli.js"), "sync", "--dry-run"],
+      {
+        cwd: harness.repo,
+        env: harness.env,
+      },
+    );
 
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);

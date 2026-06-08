@@ -3,21 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "description": "Sync a jj bookmark stack with GitHub pull requests.",
-  "type": "module",
   "bin": {
     "jjacks": "./dist/cli.js"
   },
+  "type": "module",
   "scripts": {
     "build": "tsup --config tsup.config.ts && chmod +x dist/cli.js",
-    "check": "tsc --noEmit -p tsconfig.json",
+    "check": "npm run typecheck && npm run lint && npm run format:check",
+    "format": "oxfmt src *.ts *.json AGENTS.md README.md docs notes",
+    "format:check": "oxfmt --check src *.ts *.json AGENTS.md README.md docs notes",
+    "lint": "oxlint --deny-warnings src *.ts",
     "start": "node --enable-source-maps dist/cli.js",
     "test": "vitest run --exclude 'src/integration/**/*.integration.test.ts'",
     "test:integration": "npm run build && vitest run --config vitest.integration.config.ts",
     "test:all": "npm run test && npm run test:integration",
-    "typecheck": "npm run check"
-  },
-  "engines": {
-    "node": ">=22"
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@effect/cli": "^0.75.1",
@@ -29,8 +29,13 @@
   },
   "devDependencies": {
     "@types/node": "^25.9.2",
+    "oxfmt": "^0.53.0",
+    "oxlint": "^1.68.0",
     "tsup": "^8.3.6",
     "typescript": "^5.8.3",
     "vitest": "^4.1.8"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

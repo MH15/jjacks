@@ -22,11 +22,11 @@ const formatElapsed = (elapsedMs: number): string =>
 const renderChecklist = (
   current: string,
   pending: ReadonlyArray<string>,
-  elapsedMs?: number
+  elapsedMs?: number,
 ): string =>
   [
     elapsedMs === undefined ? current : `${current} ${formatElapsed(elapsedMs)}`,
-    ...pending.map((label) => `- ${label}`)
+    ...pending.map((label) => `- ${label}`),
   ].join("\n");
 
 let currentStartedAt: number | undefined;
@@ -67,7 +67,7 @@ const withElapsed = (message: string, elapsedMs: number | undefined): string =>
 const make: ProgressServiceApi = {
   startChecklist: ({
     current,
-    pending
+    pending,
   }: {
     readonly current: string;
     readonly pending: ReadonlyArray<string>;
@@ -91,7 +91,7 @@ const make: ProgressServiceApi = {
       const elapsedMs = stopTiming();
       spinner.stopAndPersist({
         symbol: "✔",
-        text: withElapsed(message, elapsedMs)
+        text: withElapsed(message, elapsedMs),
       });
     }),
 
@@ -104,11 +104,11 @@ const make: ProgressServiceApi = {
   clear: Effect.sync(() => {
     stopTiming();
     spinner.stop();
-  })
+  }),
 };
 
 const spinner: Ora = ora({
-  discardStdin: false
+  discardStdin: false,
 });
 
 export const ProgressServiceLive = Layer.succeed(ProgressService, make);

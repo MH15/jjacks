@@ -30,14 +30,17 @@ export type BookmarkMovePlan =
 
 export const resolveBookmarkMovePlan = (
   direction: BookmarkMoveDirection,
-  entries: ReadonlyArray<StackEntry>
+  entries: ReadonlyArray<StackEntry>,
 ): BookmarkMovePlan => {
   const currentEntry = entries.find((entry) => entry.isCurrent);
   const entryNames = new Set(entries.map((entry) => entry.name));
 
   if (currentEntry === undefined && direction === "up") {
     const rootBookmarkNames = entries
-      .filter((entry) => entry.parentBookmarkName === undefined || !entryNames.has(entry.parentBookmarkName))
+      .filter(
+        (entry) =>
+          entry.parentBookmarkName === undefined || !entryNames.has(entry.parentBookmarkName),
+      )
       .map((entry) => entry.name);
 
     if (rootBookmarkNames.length === 0) {
@@ -47,13 +50,13 @@ export const resolveBookmarkMovePlan = (
     if (rootBookmarkNames.length === 1) {
       return {
         kind: "move-to-bookmark",
-        bookmarkName: rootBookmarkNames[0]!
+        bookmarkName: rootBookmarkNames[0]!,
       };
     }
 
     return {
       kind: "choose-root-bookmark",
-      rootBookmarkNames
+      rootBookmarkNames,
     };
   }
 
@@ -64,11 +67,11 @@ export const resolveBookmarkMovePlan = (
   if (direction === "down") {
     return currentEntry.parentBookmarkName === undefined
       ? {
-          kind: "move-to-trunk-continuation"
+          kind: "move-to-trunk-continuation",
         }
       : {
           kind: "move-to-bookmark",
-          bookmarkName: currentEntry.parentBookmarkName
+          bookmarkName: currentEntry.parentBookmarkName,
         };
   }
 
@@ -80,20 +83,20 @@ export const resolveBookmarkMovePlan = (
     return {
       kind: "no-target-bookmark",
       direction,
-      currentBookmarkName: currentEntry.name
+      currentBookmarkName: currentEntry.name,
     };
   }
 
   if (childBookmarkNames.length === 1) {
     return {
       kind: "move-to-bookmark",
-      bookmarkName: childBookmarkNames[0]!
+      bookmarkName: childBookmarkNames[0]!,
     };
   }
 
   return {
     kind: "choose-child-bookmark",
     parentBookmarkName: currentEntry.name,
-    childBookmarkNames
+    childBookmarkNames,
   };
 };

@@ -12,7 +12,7 @@ const stack: ReadonlyArray<StackEntry> = [
     description: "feat/base",
     parentBookmarkName: undefined,
     branchName: "feat/base",
-    isCurrent: false
+    isCurrent: false,
   },
   {
     name: "feat/ui",
@@ -21,8 +21,8 @@ const stack: ReadonlyArray<StackEntry> = [
     description: "feat/ui",
     parentBookmarkName: "feat/base",
     branchName: "feat/ui",
-    isCurrent: true
-  }
+    isCurrent: true,
+  },
 ];
 
 describe("resolveDiffFormat", () => {
@@ -64,18 +64,13 @@ describe("buildDiffArgs", () => {
       "--from",
       "feat/base",
       "--to",
-      "@"
+      "@",
     ]);
   });
 
   it("supports summary and explicit base overrides", () => {
-    expect(buildDiffArgs({ stack, defaultBranch: "main", against: "main", format: "summary" })).toEqual([
-      "diff",
-      "--from",
-      "main",
-      "--to",
-      "@",
-      "--summary"
-    ]);
+    expect(
+      buildDiffArgs({ stack, defaultBranch: "main", against: "main", format: "summary" }),
+    ).toEqual(["diff", "--from", "main", "--to", "@", "--summary"]);
   });
 });

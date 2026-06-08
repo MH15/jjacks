@@ -11,7 +11,7 @@ const makeEntry = (overrides: Partial<StackEntry> & Pick<StackEntry, "name">): S
   parentBookmarkName: overrides.parentBookmarkName,
   branchName: overrides.branchName ?? overrides.name,
   isCurrent: overrides.isCurrent ?? false,
-  ...(overrides.isEmpty === undefined ? {} : { isEmpty: overrides.isEmpty })
+  ...(overrides.isEmpty === undefined ? {} : { isEmpty: overrides.isEmpty }),
 });
 
 describe("resolveBookmarkMovePlan", () => {
@@ -19,24 +19,24 @@ describe("resolveBookmarkMovePlan", () => {
     const entries = [
       makeEntry({ name: "feat/base" }),
       makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base", isCurrent: true }),
-      makeEntry({ name: "feat/api", parentBookmarkName: "feat/ui" })
+      makeEntry({ name: "feat/api", parentBookmarkName: "feat/ui" }),
     ];
 
     expect(resolveBookmarkMovePlan("down", entries)).toEqual({
       kind: "move-to-bookmark",
-      bookmarkName: "feat/base"
+      bookmarkName: "feat/base",
     });
   });
 
   it("moves up directly when there is a single child bookmark", () => {
     const entries = [
       makeEntry({ name: "feat/base", isCurrent: true }),
-      makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base" })
+      makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base" }),
     ];
 
     expect(resolveBookmarkMovePlan("up", entries)).toEqual({
       kind: "move-to-bookmark",
-      bookmarkName: "feat/ui"
+      bookmarkName: "feat/ui",
     });
   });
 
@@ -44,72 +44,72 @@ describe("resolveBookmarkMovePlan", () => {
     const entries = [
       makeEntry({ name: "feat/base", isCurrent: true }),
       makeEntry({ name: "feat/api", parentBookmarkName: "feat/base" }),
-      makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base" })
+      makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base" }),
     ];
 
     expect(resolveBookmarkMovePlan("up", entries)).toEqual({
       kind: "choose-child-bookmark",
       parentBookmarkName: "feat/base",
-      childBookmarkNames: ["feat/api", "feat/ui"]
+      childBookmarkNames: ["feat/api", "feat/ui"],
     });
   });
 
   it("reports when there is no active current bookmark entry", () => {
     const entries = [
       makeEntry({ name: "feat/base" }),
-      makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base" })
+      makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base" }),
     ];
 
     expect(resolveBookmarkMovePlan("down", entries)).toEqual({
-      kind: "no-current-bookmark"
+      kind: "no-current-bookmark",
     });
 
     expect(resolveBookmarkMovePlan("up", [])).toEqual({
-      kind: "no-current-bookmark"
+      kind: "no-current-bookmark",
     });
   });
 
   it("moves up directly to a surviving root bookmark when there is only one root choice", () => {
-    const entries = [
-      makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base" })
-    ];
+    const entries = [makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base" })];
 
     expect(resolveBookmarkMovePlan("up", entries)).toEqual({
       kind: "move-to-bookmark",
-      bookmarkName: "feat/ui"
+      bookmarkName: "feat/ui",
     });
   });
 
   it("prompts for a root bookmark when there is no current bookmark but multiple root choices remain", () => {
     const entries = [
       makeEntry({ name: "feat/api", parentBookmarkName: "feat/base" }),
-      makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base" })
+      makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base" }),
     ];
 
     expect(resolveBookmarkMovePlan("up", entries)).toEqual({
       kind: "choose-root-bookmark",
-      rootBookmarkNames: ["feat/api", "feat/ui"]
+      rootBookmarkNames: ["feat/api", "feat/ui"],
     });
   });
 
   it("moves down to a trunk continuation from a root bookmark", () => {
     const entries = [
       makeEntry({ name: "feat/base", isCurrent: true }),
-      makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base" })
+      makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base" }),
     ];
 
     expect(resolveBookmarkMovePlan("down", entries)).toEqual({
-      kind: "move-to-trunk-continuation"
+      kind: "move-to-trunk-continuation",
     });
   });
 
   it("reports when there is no target bookmark in the requested direction", () => {
-    expect(resolveBookmarkMovePlan("up", [
-      makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base", isCurrent: true })
-    ])).toEqual({
+    expect(
+      resolveBookmarkMovePlan("up", [
+        makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base", isCurrent: true }),
+      ]),
+    ).toEqual({
       kind: "no-target-bookmark",
       direction: "up",
-      currentBookmarkName: "feat/ui"
+      currentBookmarkName: "feat/ui",
     });
   });
 });

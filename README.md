@@ -6,8 +6,6 @@
 
 Why do we need another stacking tool? There's already [Graphite](https://graphite.com/docs/cli-overview) and a dozen other GitHub stacking tools. While learning [Jujutsu](https://github.com/jj-vcs/jj) the ammend-only workflow felt underused when working with GitHub. In `jjacks`, if you're on a bookmark you'll see the diff at all times.
 
-
-
 ## Commands
 
 - `jjacks doctor`

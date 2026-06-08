@@ -14,20 +14,20 @@ const plan: SyncPlan = {
         description: "feat/base",
         parentBookmarkName: undefined,
         branchName: "feat/base",
-        isCurrent: true
+        isCurrent: true,
       },
       intendedBaseBranch: "main",
       pullRequest: null,
       remoteBranchExists: false,
       needsBookmarkPush: true,
-      actions: ["push bookmark", "create PR with base main"]
-    }
+      actions: ["push bookmark", "create PR with base main"],
+    },
   ],
   landedEntries: [],
   closedEntries: [],
   blockedEntries: [],
   hasExecutableWork: true,
-  completionState: "active-stack"
+  completionState: "active-stack",
 };
 
 const executeResult: ExecuteSyncResult = {
@@ -37,7 +37,7 @@ const executeResult: ExecuteSyncResult = {
   updatedCommentPullRequestNumbers: [12],
   warnings: [],
   plan,
-  statusEntries: []
+  statusEntries: [],
 };
 
 describe("renderSyncPreview", () => {
@@ -58,7 +58,7 @@ describe("renderSyncPreview", () => {
       closedEntries: [],
       blockedEntries: [],
       hasExecutableWork: false,
-      completionState: "empty"
+      completionState: "empty",
     });
 
     expect(output).toContain("no active bookmark stack");
@@ -80,15 +80,15 @@ describe("renderSyncPreview", () => {
             baseRefName: "main",
             state: "MERGED",
             isDraft: false,
-            body: ""
+            body: "",
           },
-          actions: ["PR #12 is merged; removed from active stack"]
-        }
+          actions: ["PR #12 is merged; removed from active stack"],
+        },
       ],
       closedEntries: [],
       blockedEntries: [],
       hasExecutableWork: true,
-      completionState: "stack-complete"
+      completionState: "stack-complete",
     });
 
     expect(output).toContain("completed");
@@ -110,18 +110,18 @@ describe("renderSyncPreview", () => {
             headRefName: "feat/base",
             baseRefName: "main",
             isDraft: false,
-            body: ""
+            body: "",
           },
           remoteBranchExists: true,
           needsBookmarkPush: false,
-          actions: []
-        }
+          actions: [],
+        },
       ],
       landedEntries: [],
       closedEntries: [],
       blockedEntries: [],
       hasExecutableWork: true,
-      completionState: "active-stack"
+      completionState: "active-stack",
     });
 
     expect(output).toContain("feat/base https://github.com/MH15/jjacks/pull/12");
@@ -150,7 +150,7 @@ describe("renderStatus", () => {
           description: "feat/base",
           parentBookmarkName: undefined,
           branchName: "feat/base",
-          isCurrent: false
+          isCurrent: false,
         },
         pullRequest: {
           number: 12,
@@ -159,10 +159,10 @@ describe("renderStatus", () => {
           headRefName: "feat/base",
           baseRefName: "main",
           isDraft: false,
-          body: ""
+          body: "",
         },
         remoteBranchExists: true,
-        needsBookmarkPush: false
+        needsBookmarkPush: false,
       },
       {
         entry: {
@@ -173,13 +173,13 @@ describe("renderStatus", () => {
           parentBookmarkName: "feat/base",
           branchName: "feat/blocked",
           isCurrent: true,
-          hasConflict: true
+          hasConflict: true,
         },
         pullRequest: null,
         remoteBranchExists: false,
         needsBookmarkPush: true,
-        blockedBy: "feat/blocked"
-      }
+        blockedBy: "feat/blocked",
+      },
     ]);
 
     expect(output).toContain("feat/base");
@@ -205,7 +205,7 @@ describe("renderDoctor", () => {
             description: "feat/base",
             parentBookmarkName: undefined,
             branchName: "feat/base",
-            isCurrent: true
+            isCurrent: true,
           },
           pullRequest: {
             number: 12,
@@ -214,12 +214,12 @@ describe("renderDoctor", () => {
             headRefName: "feat/base",
             baseRefName: "main",
             isDraft: false,
-            body: ""
+            body: "",
           },
           remoteBranchExists: true,
-          needsBookmarkPush: false
-        }
-      ]
+          needsBookmarkPush: false,
+        },
+      ],
     });
 
     expect(output).toContain("checks");
@@ -243,7 +243,7 @@ describe("renderExecuteSummary", () => {
       pushedBookmarks: [],
       createdPullRequestBookmarks: [],
       updatedPullRequestNumbers: [],
-      updatedCommentPullRequestNumbers: []
+      updatedCommentPullRequestNumbers: [],
     });
 
     expect(output).toContain("no pushes, no PRs, no comments");
@@ -252,7 +252,7 @@ describe("renderExecuteSummary", () => {
   it("includes warnings when non-fatal sync steps fail", () => {
     const output = renderExecuteSummary({
       ...executeResult,
-      warnings: ["failed to sync stack comment for PR #12: API rate limit exceeded"]
+      warnings: ["failed to sync stack comment for PR #12: API rate limit exceeded"],
     });
 
     expect(output).toContain("1 push, 1 PR, 1 comment");
