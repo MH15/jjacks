@@ -26,6 +26,7 @@ export const PullRequestSummary = Schema.Struct({
   url: Schema.String,
   title: Schema.String,
   headRefName: Schema.String,
+  headRepositoryOwner: OptionalString,
   baseRefName: Schema.String,
   state: OptionalString,
   isDraft: Schema.Boolean,

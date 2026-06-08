@@ -127,7 +127,11 @@ Do not build a full multi-stack UI. A named stack root plus current inferred lan
 
 ## 4. How Robust Should PR Discovery Be?
 
-PR lookup currently shells out to `gh pr list --state open --limit 200` and filters by `headRefName`. This is enough for a small repo, but it can miss or confuse PRs in larger setups.
+Decision: PR lookup should be exact by branch name, but not exact by owner.
+
+`jjacks` must support stacks built on top of PRs started by a coworker or from a fork. That means discovery cannot assume the local GitHub owner is the PR head owner. It should query by bare branch/bookmark name, then inspect the returned head owner to detect ambiguity.
+
+The previous implementation shelled out to one repo-wide `gh pr list --state all --limit 200` call and filtered by `headRefName`. That could miss PRs past the limit and made duplicate branch names hard to diagnose.
 
 Important cases:
 
@@ -140,13 +144,15 @@ Important cases:
 
 ### 90/10 Implementation
 
-Introduce a `PullRequestIndex` service that queries GitHub by exact head refs and paginates.
+Query GitHub once per stack branch/bookmark with a bounded concurrency limit.
 
 For each branch, query:
 
 ```bash
-gh pr list --head OWNER:branch --state all --json number,url,title,headRefName,headRepositoryOwner,baseRefName,state,isDraft,body
+gh pr list --head branch --state all --json number,url,title,headRefName,headRepositoryOwner,baseRefName,state,isDraft,body
 ```
+
+Do not use `OWNER:branch` here. `gh pr list --head` only supports branch names, and that is the behavior we want for coworker/fork handoff workflows.
 
 Track enough fields to distinguish:
 
@@ -154,13 +160,16 @@ Track enough fields to distinguish:
 - merged
 - closed-unmerged
 - missing
+- ambiguous
 
 Then update sync planning rules:
 
 - open PR exists: edit it
 - merged PR exists: treat bookmark as landed or obsolete, depending on local ancestry
 - closed-unmerged PR exists: warn before recreating
-- multiple matches: fail with an explicit disambiguation message
+- more than one open PR exists for the same branch: fail with an explicit disambiguation message listing PR numbers and head owners
+
+Because `jjacks status` and `jjacks sync` share the same discovery path, ambiguity should show up in `status` and block `sync` before any mutation.
 
 ### Not Yet
 
