@@ -35,29 +35,9 @@ const doctor = Command.make("doctor", {}, () =>
     yield* jjService.ensureAdvanceBookmarksEnabled;
     const status = yield* stackService.getStatus;
 
-    yield* Console.log(
-      renderDoctor([
-        "advance-bookmarks.enabled: true",
-        `repo root: ${status.repoRoot}`,
-        `current stack entries: ${status.entries.length}`,
-        ...(status.entries.length === 0 ? ["no active bookmark stack", "next: jjacks create <bookmark-name>"] : []),
-        ...status.entries.map(({ entry, pullRequest, remoteBranchExists, needsBookmarkPush, blockedBy }) =>
-          `${entry.name}: branch ${entry.branchName}, ${
-            !remoteBranchExists ? "not pushed" : needsBookmarkPush ? "needs push" : "pushed"
-          }${
-            pullRequest === null ? ", no PR yet" : `, PR #${pullRequest.number}`
-          }${
-            blockedBy === undefined
-              ? ""
-              : blockedBy === entry.name
-                ? ", blocked by local conflict"
-                : `, blocked by conflict in ${blockedBy}`
-          }`
-        )
-      ])
-    );
+    yield* Console.log(renderDoctor(status));
   })
-).pipe(Command.withDescription("Check repo state, required jj config, and current stack/PR wiring."));
+).pipe(Command.withDescription("Check repo state and required jj config."));
 
 const status = Command.make("status", {}, () =>
   Effect.gen(function* () {

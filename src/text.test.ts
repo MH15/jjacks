@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ExecuteSyncResult, SyncPlan } from "../src/domain";
-import { renderExecuteSummary, renderStatus, renderSyncPreview } from "../src/text";
+import { renderDoctor, renderExecuteSummary, renderStatus, renderSyncPreview } from "../src/text";
 
 const plan: SyncPlan = {
   localActions: ["fetch origin", "move main to main@origin"],
@@ -133,9 +133,100 @@ describe("renderStatus", () => {
   it("renders a friendly empty-state status when there is no active stack", () => {
     const output = renderStatus("/tmp/repo", []);
 
-    expect(output).toContain("jjacks status");
+    expect(output).toContain("stack");
+    expect(output).toContain("pull requests");
+    expect(output).not.toContain("jjacks status");
     expect(output).toContain("no active bookmark stack");
     expect(output).toContain("jjacks create <bookmark-name>");
+  });
+
+  it("renders PR and blocker state as the stack dashboard", () => {
+    const output = renderStatus("/tmp/repo", [
+      {
+        entry: {
+          name: "feat/base",
+          changeId: "aaa111",
+          commitId: "111aaa",
+          description: "feat/base",
+          parentBookmarkName: undefined,
+          branchName: "feat/base",
+          isCurrent: false
+        },
+        pullRequest: {
+          number: 12,
+          url: "https://github.com/MH15/jjacks/pull/12",
+          title: "feat/base",
+          headRefName: "feat/base",
+          baseRefName: "main",
+          isDraft: false,
+          body: ""
+        },
+        remoteBranchExists: true,
+        needsBookmarkPush: false
+      },
+      {
+        entry: {
+          name: "feat/blocked",
+          changeId: "bbb222",
+          commitId: "222bbb",
+          description: "feat/blocked",
+          parentBookmarkName: "feat/base",
+          branchName: "feat/blocked",
+          isCurrent: true,
+          hasConflict: true
+        },
+        pullRequest: null,
+        remoteBranchExists: false,
+        needsBookmarkPush: true,
+        blockedBy: "feat/blocked"
+      }
+    ]);
+
+    expect(output).toContain("feat/base");
+    expect(output).toContain("PR #12");
+    expect(output).toContain("base: main");
+    expect(output).toContain("feat/blocked");
+    expect(output).toContain("not pushed");
+    expect(output).toContain("no PR yet");
+    expect(output).toContain("blocked by local conflict");
+  });
+});
+
+describe("renderDoctor", () => {
+  it("renders checks without stack PR details", () => {
+    const output = renderDoctor({
+      repoRoot: "/tmp/repo",
+      entries: [
+        {
+          entry: {
+            name: "feat/base",
+            changeId: "aaa111",
+            commitId: "111aaa",
+            description: "feat/base",
+            parentBookmarkName: undefined,
+            branchName: "feat/base",
+            isCurrent: true
+          },
+          pullRequest: {
+            number: 12,
+            url: "https://github.com/MH15/jjacks/pull/12",
+            title: "feat/base",
+            headRefName: "feat/base",
+            baseRefName: "main",
+            isDraft: false,
+            body: ""
+          },
+          remoteBranchExists: true,
+          needsBookmarkPush: false
+        }
+      ]
+    });
+
+    expect(output).toContain("checks");
+    expect(output).toContain("advance-bookmarks.enabled");
+    expect(output).toContain("current stack entries: 1");
+    expect(output).not.toContain("pull requests");
+    expect(output).not.toContain("PR #12");
   });
 });
 

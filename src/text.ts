@@ -2,29 +2,62 @@ import chalk from "chalk";
 
 import type { ExecuteSyncResult, PullRequestSummary, StackStatusEntry, SyncPlan } from "./domain";
 
-const formatPr = (pr: PullRequestSummary | null): string =>
-  pr === null ? "missing" : `#${pr.number} ${pr.title} (${pr.baseRefName} <- ${pr.headRefName})`;
+const formatLabel = (label: string): string => chalk.gray(`${label}:`);
 
-export const renderDoctor = (checks: ReadonlyArray<string>): string =>
-  ["jjacks doctor", ...checks.map((check) => `- ${check}`)].join("\n");
+const formatRemoteState = (remoteBranchExists: boolean, needsBookmarkPush: boolean): string =>
+  !remoteBranchExists ? chalk.yellow("not pushed") : needsBookmarkPush ? chalk.yellow("needs push") : chalk.green("pushed");
+
+const formatBlocked = (entry: StackStatusEntry): string => {
+  if (entry.blockedBy === undefined) {
+    return "";
+  }
+
+  return entry.blockedBy === entry.entry.name
+    ? `, ${chalk.red("blocked by local conflict")}`
+    : `, ${chalk.red(`blocked by conflict in ${entry.blockedBy}`)}`;
+};
+
+const formatStatusPullRequest = (pullRequest: PullRequestSummary | null): string =>
+  pullRequest === null
+    ? chalk.yellow("no PR yet")
+    : [
+        chalk.cyan(`PR #${pullRequest.number}`),
+        `${formatLabel("base")} ${pullRequest.baseRefName}`,
+        ...(pullRequest.state === undefined ? [] : [`${formatLabel("state")} ${pullRequest.state.toLowerCase()}`])
+      ].join(", ");
+
+export const renderDoctor = ({
+  repoRoot,
+  entries
+}: {
+  readonly repoRoot: string;
+  readonly entries: ReadonlyArray<StackStatusEntry>;
+}): string =>
+  [
+    chalk.cyan("checks"),
+    `- ${formatLabel("advance-bookmarks.enabled")} ${chalk.green("true")}`,
+    `- ${formatLabel("repo root")} ${repoRoot}`,
+    `- ${formatLabel("current stack entries")} ${entries.length}`
+  ].join("\n");
 
 export const renderStatus = (repoRoot: string, entries: ReadonlyArray<StackStatusEntry>): string =>
   [
-    `jjacks status`,
-    `repo: ${repoRoot}`,
+    chalk.cyan("stack"),
+    `- ${formatLabel("repo root")} ${repoRoot}`,
+    `- ${formatLabel("current entries")} ${entries.length}`,
+    "",
+    chalk.cyan("pull requests"),
     ...(entries.length === 0
-      ? ["no active bookmark stack", "next: jjacks create <bookmark-name>"]
-      : entries.map(({ entry, pullRequest, remoteBranchExists, needsBookmarkPush, blockedBy }) => {
-          const parent = entry.parentBookmarkName ?? "<trunk>";
-          const remote = !remoteBranchExists ? "not pushed" : needsBookmarkPush ? "needs push" : "pushed";
-          const blocked =
-            blockedBy === undefined
-              ? ""
-              : blockedBy === entry.name
-              ? " | blocked: local conflict"
-              : ` | blocked: conflict in ${blockedBy}`;
-          return `- ${entry.name} -> ${entry.branchName} | parent: ${parent} | remote: ${remote} | pr: ${formatPr(pullRequest)}${blocked}`;
-        }))
+      ? [`- ${chalk.yellow("no active bookmark stack")}`, `- ${formatLabel("next")} jjacks create <bookmark-name>`]
+      : entries.map((entry) =>
+          [
+            `- ${chalk.bold(entry.entry.name)}`,
+            `${formatLabel("branch")} ${entry.entry.branchName}`,
+            `${formatLabel("parent")} ${entry.entry.parentBookmarkName ?? "<trunk>"}`,
+            formatRemoteState(entry.remoteBranchExists, entry.needsBookmarkPush),
+            formatStatusPullRequest(entry.pullRequest)
+          ].join(", ") + formatBlocked(entry)
+        ))
   ].join("\n");
 
 type RenderSyncPreviewOptions = {
