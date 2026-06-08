@@ -11,7 +11,9 @@
     "build": "tsup --config tsup.config.ts && chmod +x dist/cli.js",
     "check": "tsc --noEmit -p tsconfig.json",
     "start": "node --enable-source-maps dist/cli.js",
-    "test": "vitest run",
+    "test": "vitest run --exclude 'src/integration/**/*.integration.test.ts'",
+    "test:integration": "npm run build && vitest run --config vitest.integration.config.ts",
+    "test:all": "npm run test && npm run test:integration",
     "typecheck": "npm run check"
   },
   "engines": {

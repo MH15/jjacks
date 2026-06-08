@@ -6,44 +6,53 @@ import { GitHubService, GitHubServiceLive } from "../src/services/GitHubService"
 import { ProcessService } from "../src/services/ProcessService";
 
 describe("GitHubService.findPullRequestsByHeads", () => {
-  it("looks across all PR states and prefers open PRs for duplicate heads", async () => {
+  it("queries each branch by exact head and prefers open PRs over merged PRs", async () => {
     const calls: Array<ReadonlyArray<string>> = [];
     const processLayer = Layer.succeed(ProcessService, {
       run: (_command: string, args: ReadonlyArray<string>) => {
         calls.push(args);
+        const branchName = args[args.indexOf("--head") + 1];
         return Effect.succeed({
-          stdout: JSON.stringify([
-            {
-              number: 55,
-              url: "https://github.com/MH15/jjacks/pull/55",
-              title: "merged",
-              headRefName: "mh/open-questions",
-              baseRefName: "main",
-              state: "MERGED",
-              isDraft: false,
-              body: ""
-            },
-            {
-              number: 56,
-              url: "https://github.com/MH15/jjacks/pull/56",
-              title: "open",
-              headRefName: "remove-refresh",
-              baseRefName: "mh/open-questions",
-              state: "MERGED",
-              isDraft: false,
-              body: ""
-            },
-            {
-              number: 57,
-              url: "https://github.com/MH15/jjacks/pull/57",
-              title: "open",
-              headRefName: "remove-refresh",
-              baseRefName: "main",
-              state: "OPEN",
-              isDraft: false,
-              body: ""
-            }
-          ]),
+          stdout: JSON.stringify(
+            branchName === "mh/open-questions"
+              ? [
+                  {
+                    number: 55,
+                    url: "https://github.com/MH15/jjacks/pull/55",
+                    title: "merged",
+                    headRefName: "mh/open-questions",
+                    headRepositoryOwner: "MH15",
+                    baseRefName: "main",
+                    state: "MERGED",
+                    isDraft: false,
+                    body: ""
+                  }
+                ]
+              : [
+                  {
+                    number: 56,
+                    url: "https://github.com/MH15/jjacks/pull/56",
+                    title: "merged",
+                    headRefName: "remove-refresh",
+                    headRepositoryOwner: "MH15",
+                    baseRefName: "mh/open-questions",
+                    state: "MERGED",
+                    isDraft: false,
+                    body: ""
+                  },
+                  {
+                    number: 57,
+                    url: "https://github.com/MH15/jjacks/pull/57",
+                    title: "open",
+                    headRefName: "remove-refresh",
+                    headRepositoryOwner: "coworker",
+                    baseRefName: "main",
+                    state: "OPEN",
+                    isDraft: false,
+                    body: ""
+                  }
+                ]
+          ),
           stderr: "",
           exitCode: 0
         });
@@ -60,15 +69,83 @@ describe("GitHubService.findPullRequestsByHeads", () => {
     expect(calls[0]).toEqual([
       "pr",
       "list",
+      "--head",
+      "mh/open-questions",
       "--state",
       "all",
       "--json",
-      "number,url,title,headRefName,baseRefName,state,isDraft,body",
-      "--limit",
-      "200"
+      "number,url,title,headRefName,headRepositoryOwner,baseRefName,state,isDraft,body",
+      "--jq",
+      expect.any(String)
+    ]);
+    expect(calls[1]).toEqual([
+      "pr",
+      "list",
+      "--head",
+      "remove-refresh",
+      "--state",
+      "all",
+      "--json",
+      "number,url,title,headRefName,headRepositoryOwner,baseRefName,state,isDraft,body",
+      "--jq",
+      expect.any(String)
     ]);
     expect(pullRequests.get("mh/open-questions")?.state).toBe("MERGED");
     expect(pullRequests.get("remove-refresh")?.number).toBe(57);
+    expect(pullRequests.get("remove-refresh")?.headRepositoryOwner).toBe("coworker");
+  });
+
+  it("fails when more than one open PR matches the same branch", async () => {
+    const processLayer = Layer.succeed(ProcessService, {
+      run: () =>
+        Effect.succeed({
+          stdout: JSON.stringify([
+            {
+              number: 12,
+              url: "https://github.com/MH15/jjacks/pull/12",
+              title: "first",
+              headRefName: "feat/shared",
+              headRepositoryOwner: "alice",
+              baseRefName: "main",
+              state: "OPEN",
+              isDraft: false,
+              body: ""
+            },
+            {
+              number: 13,
+              url: "https://github.com/MH15/jjacks/pull/13",
+              title: "second",
+              headRefName: "feat/shared",
+              headRepositoryOwner: "bob",
+              baseRefName: "main",
+              state: "OPEN",
+              isDraft: false,
+              body: ""
+            }
+          ]),
+          stderr: "",
+          exitCode: 0
+        })
+    });
+
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const github = yield* GitHubService;
+        return yield* github.findPullRequestsByHeads(["feat/shared"]);
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, GitHubServiceLive)))
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(CliError);
+        expect(failure.value.message).toContain("Multiple open pull requests found for branch feat/shared");
+        expect(failure.value.message).toContain("PR #12 alice:feat/shared");
+        expect(failure.value.message).toContain("PR #13 bob:feat/shared");
+      }
+    }
   });
 });
 

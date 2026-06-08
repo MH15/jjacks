@@ -53,6 +53,74 @@ const prStatePriority = (pullRequest: PullRequestSummaryType): number =>
       ? 1
       : 2;
 
+const prListJsonFields = [
+  "number",
+  "url",
+  "title",
+  "headRefName",
+  "headRepositoryOwner",
+  "baseRefName",
+  "state",
+  "isDraft",
+  "body"
+].join(",");
+
+const normalizePullRequestsJq = [
+  "[.[] | {",
+  "number,",
+  "url,",
+  "title,",
+  "headRefName,",
+  'headRepositoryOwner: (if (.headRepositoryOwner | type) == "object" then .headRepositoryOwner.login else .headRepositoryOwner end),',
+  "baseRefName,",
+  "state,",
+  "isDraft,",
+  "body",
+  "} | with_entries(select(.value != null))]"
+].join(" ");
+
+const formatPullRequestIdentity = (pullRequest: PullRequestSummaryType): string =>
+  [
+    `PR #${pullRequest.number}`,
+    pullRequest.headRepositoryOwner === undefined
+      ? pullRequest.headRefName
+      : `${pullRequest.headRepositoryOwner}:${pullRequest.headRefName}`,
+    `base ${pullRequest.baseRefName}`
+  ].join(" ");
+
+const selectPullRequestForBranch = (
+  branchName: string,
+  pullRequests: ReadonlyArray<PullRequestSummaryType>
+): Effect.Effect<PullRequestSummaryType | null, CliError> => {
+  const matchingPullRequests = pullRequests.filter((pullRequest) => pullRequest.headRefName === branchName);
+  if (matchingPullRequests.length === 0) {
+    return Effect.succeed(null);
+  }
+
+  const openPullRequests = matchingPullRequests.filter((pullRequest) =>
+    pullRequest.state === "OPEN" || pullRequest.state === undefined
+  );
+  if (openPullRequests.length > 1) {
+    return Effect.fail(
+      new CliError(
+        [
+          `Multiple open pull requests found for branch ${branchName}.`,
+          ...openPullRequests.map((pullRequest) => `- ${formatPullRequestIdentity(pullRequest)}`),
+          "",
+          "Close, merge, or rename one of these PRs before running jjacks status or sync."
+        ].join("\n")
+      )
+    );
+  }
+
+  if (openPullRequests.length === 1) {
+    return Effect.succeed(openPullRequests[0]!);
+  }
+
+  const sortedPullRequests = [...matchingPullRequests].sort((left, right) => prStatePriority(left) - prStatePriority(right));
+  return Effect.succeed(sortedPullRequests[0] ?? null);
+};
+
 const make = {
   findPullRequestsByHeads: (branchNames: ReadonlyArray<string>) =>
     Effect.gen(function* () {
@@ -61,35 +129,39 @@ const make = {
       }
 
       const process = yield* ProcessService;
-      const result = yield* process.run("gh", [
-        "pr",
-        "list",
-        "--state",
-        "all",
-        "--json",
-        "number,url,title,headRefName,baseRefName,state,isDraft,body",
-        "--limit",
-        "200"
-      ]);
-
-      const requestedBranches = new Set(branchNames);
-      const pullRequests = yield* decodeWithSchema(
-        Schema.parseJson(Schema.Array(PullRequestSummary)),
-        result.stdout,
-        "Failed to decode gh pr list output"
-      );
-
       const resultByHead = new Map<string, PullRequestSummaryType>();
-      for (const pullRequest of pullRequests) {
-        if (!requestedBranches.has(pullRequest.headRefName)) {
-          continue;
-        }
+      const uniqueBranchNames = [...new Set(branchNames)];
 
-        const existing = resultByHead.get(pullRequest.headRefName);
-        if (existing === undefined || prStatePriority(pullRequest) < prStatePriority(existing)) {
-          resultByHead.set(pullRequest.headRefName, pullRequest);
+      yield* Effect.forEach(uniqueBranchNames, (branchName) =>
+        Effect.gen(function* () {
+          const result = yield* process.run("gh", [
+            "pr",
+            "list",
+            "--head",
+            branchName,
+            "--state",
+            "all",
+            "--json",
+            prListJsonFields,
+            "--jq",
+            normalizePullRequestsJq
+          ]);
+
+          const pullRequests = yield* decodeWithSchema(
+            Schema.parseJson(Schema.Array(PullRequestSummary)),
+            result.stdout,
+            `Failed to decode gh pr list output for branch ${branchName}`
+          );
+          const selectedPullRequest = yield* selectPullRequestForBranch(branchName, pullRequests);
+          if (selectedPullRequest !== null) {
+            resultByHead.set(branchName, selectedPullRequest);
+          }
+        }),
+        {
+          discard: true,
+          concurrency: 4
         }
-      }
+      );
 
       return resultByHead;
     }),
