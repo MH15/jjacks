@@ -1,4 +1,4 @@
-import chalk from "chalk";
+import chalk, { Chalk } from "chalk";
 
 import type { ExecuteSyncResult, PullRequestSummary, StackStatusEntry, SyncPlan } from "./domain";
 
@@ -215,15 +215,20 @@ export const renderExecuteSummary = (result: ExecuteSyncResult): string => {
 export const formatMergeConfirmationMessage = ({
   bookmarkName,
   pullRequest,
+  color = false,
 }: {
   readonly bookmarkName: string;
   readonly pullRequest: PullRequestSummary;
-}): string =>
-  [
+  readonly color?: boolean;
+}): string => {
+  const colors = new Chalk({ level: color ? 1 : 0 });
+
+  return [
     "Merge the bottom PR in this stack?",
-    `PR #${pullRequest.number}: ${pullRequest.title}`,
-    `bookmark: ${bookmarkName}`,
-    pullRequest.url,
+    `${colors.cyan(`PR #${pullRequest.number}`)}: ${pullRequest.title}`,
+    `${colors.gray("bookmark:")} ${bookmarkName}`,
+    colors.gray(pullRequest.url),
     "",
     "Confirm merge",
   ].join("\n");
+};
