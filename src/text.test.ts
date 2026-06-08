@@ -9,6 +9,10 @@ import {
   renderSyncPreview,
 } from "../src/text";
 
+const ansiEscape = String.fromCharCode(27);
+const stripAnsi = (text: string): string =>
+  text.replace(new RegExp(`${ansiEscape}\\[[0-9;]*m`, "g"), "");
+
 const plan: SyncPlan = {
   localActions: ["fetch origin", "move main to main@origin"],
   githubActions: [
@@ -284,6 +288,35 @@ describe("formatMergeConfirmationMessage", () => {
     });
 
     expect(output).toBe(
+      [
+        "Merge the bottom PR in this stack?",
+        "PR #12: Add base workflow",
+        "bookmark: feat/base",
+        "https://github.com/MH15/jjacks/pull/12",
+        "",
+        "Confirm merge",
+      ].join("\n"),
+    );
+  });
+
+  it("can colorize the merge prompt while preserving the same text", () => {
+    const output = formatMergeConfirmationMessage({
+      bookmarkName: "feat/base",
+      pullRequest: {
+        number: 12,
+        url: "https://github.com/MH15/jjacks/pull/12",
+        title: "Add base workflow",
+        headRefName: "feat/base",
+        baseRefName: "main",
+        state: "OPEN",
+        isDraft: false,
+        body: "",
+      },
+      color: true,
+    });
+
+    expect(output).toContain(`${ansiEscape}[`);
+    expect(stripAnsi(output)).toBe(
       [
         "Merge the bottom PR in this stack?",
         "PR #12: Add base workflow",

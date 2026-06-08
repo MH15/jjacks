@@ -562,6 +562,7 @@ const merge = Command.make("merge", {}, () =>
       formatMergeConfirmationMessage({
         bookmarkName: bottomEntry.entry.name,
         pullRequest,
+        color: true,
       }),
     );
     if (!confirmed) {
