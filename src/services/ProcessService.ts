@@ -19,7 +19,7 @@ export class ProcessService extends Context.Tag("ProcessService")<
       options?: {
         readonly cwd?: string;
         readonly allowNonZeroExit?: boolean;
-      }
+      },
     ) => Effect.Effect<ProcessResult, CliError>;
   }
 >() {}
@@ -31,12 +31,12 @@ const make = {
     options?: {
       readonly cwd?: string;
       readonly allowNonZeroExit?: boolean;
-    }
+    },
   ) =>
     Effect.async<ProcessResult, CliError>((resume) => {
       const child = spawn(command, args, {
         cwd: options?.cwd,
-        stdio: ["ignore", "pipe", "pipe"]
+        stdio: ["ignore", "pipe", "pipe"],
       });
       let resolved = false;
 
@@ -78,9 +78,11 @@ const make = {
           resolve(
             Effect.fail(
               new CliError(
-                [`Command failed: ${command} ${args.join(" ")}`, stderr.trim(), stdout.trim()].filter(Boolean).join("\n")
-              )
-            )
+                [`Command failed: ${command} ${args.join(" ")}`, stderr.trim(), stdout.trim()]
+                  .filter(Boolean)
+                  .join("\n"),
+              ),
+            ),
           );
           return;
         }
@@ -89,8 +91,8 @@ const make = {
           Effect.succeed({
             stdout: stdout.trim(),
             stderr: stderr.trim(),
-            exitCode: normalizedExit
-          })
+            exitCode: normalizedExit,
+          }),
         );
       };
 
@@ -108,7 +110,7 @@ const make = {
         cleanup();
         child.kill("SIGTERM");
       });
-    })
+    }),
 };
 
 export const ProcessServiceLive = Layer.succeed(ProcessService, make);

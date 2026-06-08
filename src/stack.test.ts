@@ -10,10 +10,7 @@ import {
   stackCommentMarker,
   upsertStackCommentInBody,
 } from "../src/stack";
-import {
-  orderStackNodes,
-  selectCurrentBookmarkTree,
-} from "../src/services/JjService";
+import { orderStackNodes, selectCurrentBookmarkTree } from "../src/services/JjService";
 import { GitService } from "../src/services/GitService";
 import { GitHubService } from "../src/services/GitHubService";
 import { JjService } from "../src/services/JjService";
@@ -144,9 +141,7 @@ const makeLayer = (options?: {
         new Map(
           branchNames.flatMap((branchName) => {
             const pullRequest = pullRequests.get(branchName);
-            return pullRequest === undefined
-              ? []
-              : [[branchName, pullRequest] as const];
+            return pullRequest === undefined ? [] : [[branchName, pullRequest] as const];
           }),
         ),
       ),
@@ -281,18 +276,14 @@ describe("StackService with injected fakes", () => {
       remoteBranchExists: true,
       needsBookmarkPush: false,
     });
-    expect(plan.githubActions[0]?.actions).not.toContainEqual(
-      expect.stringContaining("create PR"),
-    );
+    expect(plan.githubActions[0]?.actions).not.toContainEqual(expect.stringContaining("create PR"));
     expect(plan.githubActions[1]).toMatchObject({
       intendedBaseBranch: "feat/base",
       remoteBranchExists: false,
       needsBookmarkPush: true,
     });
     expect(plan.githubActions[1]?.actions).toContain("push bookmark");
-    expect(plan.githubActions[1]?.actions).toContain(
-      "create PR with base feat/base",
-    );
+    expect(plan.githubActions[1]?.actions).toContain("create PR with base feat/base");
   });
 
   it("returns repo-scoped status entries with PR lookup results", async () => {
@@ -328,10 +319,8 @@ describe("StackService with injected fakes", () => {
       syncBookmarkToRemote: () => Effect.void,
       editWorkingCopyOnStack: () => Effect.succeed(""),
       editWorkingCopyOnBookmark: () => Effect.succeed(""),
-      logBookmarks: () =>
-        Effect.die("logBookmarks should not be used in this test."),
-      diffCurrentStack: () =>
-        Effect.die("diffCurrentStack should not be used in this test."),
+      logBookmarks: () => Effect.die("logBookmarks should not be used in this test."),
+      diffCurrentStack: () => Effect.die("diffCurrentStack should not be used in this test."),
     });
 
     const repoLayer = Layer.succeed(RepoService, {
@@ -341,13 +330,9 @@ describe("StackService with injected fakes", () => {
 
     const githubLayer = Layer.succeed(GitHubService, {
       findPullRequestsByHeads: () =>
-        Effect.die(
-          "findPullRequestsByHeads should not be used for an empty stack.",
-        ),
+        Effect.die("findPullRequestsByHeads should not be used for an empty stack."),
       findPullRequestByHead: () =>
-        Effect.die(
-          "findPullRequestByHead should not be used for an empty stack.",
-        ),
+        Effect.die("findPullRequestByHead should not be used for an empty stack."),
       createPullRequest: () =>
         Effect.die("createPullRequest should not be used for an empty stack."),
       updatePullRequest: () => Effect.void,
@@ -359,13 +344,9 @@ describe("StackService with injected fakes", () => {
 
     const gitLayer = Layer.succeed(GitService, {
       getBookmarksRemoteState: () =>
-        Effect.die(
-          "getBookmarksRemoteState should not be used for an empty stack.",
-        ),
+        Effect.die("getBookmarksRemoteState should not be used for an empty stack."),
       getBookmarkRemoteState: () =>
-        Effect.die(
-          "getBookmarkRemoteState should not be used for an empty stack.",
-        ),
+        Effect.die("getBookmarkRemoteState should not be used for an empty stack."),
       pushBookmarks: () => Effect.void,
       pushBookmark: () => Effect.void,
     });
@@ -441,10 +422,8 @@ describe("StackService with injected fakes", () => {
       syncBookmarkToRemote: () => Effect.void,
       editWorkingCopyOnStack: () => Effect.succeed(""),
       editWorkingCopyOnBookmark: () => Effect.succeed(""),
-      logBookmarks: () =>
-        Effect.die("logBookmarks should not be used in this test."),
-      diffCurrentStack: () =>
-        Effect.die("diffCurrentStack should not be used in this test."),
+      logBookmarks: () => Effect.die("logBookmarks should not be used in this test."),
+      diffCurrentStack: () => Effect.die("diffCurrentStack should not be used in this test."),
     });
 
     const repoLayer = Layer.succeed(RepoService, {
@@ -454,17 +433,11 @@ describe("StackService with injected fakes", () => {
 
     const githubLayer = Layer.succeed(GitHubService, {
       findPullRequestsByHeads: () =>
-        Effect.die(
-          "findPullRequestsByHeads should not be used without an active stack.",
-        ),
+        Effect.die("findPullRequestsByHeads should not be used without an active stack."),
       findPullRequestByHead: () =>
-        Effect.die(
-          "findPullRequestByHead should not be used without an active stack.",
-        ),
+        Effect.die("findPullRequestByHead should not be used without an active stack."),
       createPullRequest: () =>
-        Effect.die(
-          "createPullRequest should not be used without an active stack.",
-        ),
+        Effect.die("createPullRequest should not be used without an active stack."),
       updatePullRequest: () => Effect.void,
       mergePullRequestWhenReady: () => Effect.void,
       listIssueComments: () => Effect.succeed([]),
@@ -474,13 +447,9 @@ describe("StackService with injected fakes", () => {
 
     const gitLayer = Layer.succeed(GitService, {
       getBookmarksRemoteState: () =>
-        Effect.die(
-          "getBookmarksRemoteState should not be used without an active stack.",
-        ),
+        Effect.die("getBookmarksRemoteState should not be used without an active stack."),
       getBookmarkRemoteState: () =>
-        Effect.die(
-          "getBookmarkRemoteState should not be used without an active stack.",
-        ),
+        Effect.die("getBookmarkRemoteState should not be used without an active stack."),
       pushBookmarks: () => Effect.void,
       pushBookmark: () => Effect.void,
     });
@@ -549,9 +518,7 @@ describe("StackService with injected fakes", () => {
       getCurrentTree: Effect.succeed(currentStack),
       getTrackedBookmarks: Effect.succeed(currentStack),
       ensureBookmarkDescription: () =>
-        Effect.die(
-          "ensureBookmarkDescription should not run for a completed stack.",
-        ),
+        Effect.die("ensureBookmarkDescription should not run for a completed stack."),
       createBookmark: () => Effect.void,
       moveToBookmark: () => Effect.succeed(""),
       moveToTrunkContinuation: () => Effect.succeed(""),
@@ -559,16 +526,13 @@ describe("StackService with injected fakes", () => {
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
       editWorkingCopyOnStack: () =>
-        Effect.die(
-          "editWorkingCopyOnStack should not run for a completed stack.",
-        ),
+        Effect.die("editWorkingCopyOnStack should not run for a completed stack."),
       editWorkingCopyOnBookmark: ({ bookmarkName }) =>
         Effect.sync(() => {
           editedBookmarks.push(bookmarkName);
           return "";
         }),
-      logBookmarks: () =>
-        Effect.die("logBookmarks should not be used in this test."),
+      logBookmarks: () => Effect.die("logBookmarks should not be used in this test."),
       diffCurrentStack: () => Effect.succeed(""),
     });
 
@@ -603,9 +567,7 @@ describe("StackService with injected fakes", () => {
       updatePullRequest: () =>
         Effect.die("updatePullRequest should not run for a completed stack."),
       mergePullRequestWhenReady: () =>
-        Effect.die(
-          "mergePullRequestWhenReady should not run for a completed stack.",
-        ),
+        Effect.die("mergePullRequestWhenReady should not run for a completed stack."),
       listIssueComments: () =>
         Effect.die("listIssueComments should not run for a completed stack."),
       createIssueComment: () =>
@@ -629,10 +591,8 @@ describe("StackService with injected fakes", () => {
         ),
       getBookmarkRemoteState: () =>
         Effect.die("getBookmarkRemoteState should not run in batch mode."),
-      pushBookmarks: () =>
-        Effect.die("pushBookmarks should not run for a completed stack."),
-      pushBookmark: () =>
-        Effect.die("pushBookmark should not run for a completed stack."),
+      pushBookmarks: () => Effect.die("pushBookmarks should not run for a completed stack."),
+      pushBookmark: () => Effect.die("pushBookmark should not run for a completed stack."),
     });
 
     const processLayer = Layer.succeed(ProcessService, {
@@ -648,14 +608,7 @@ describe("StackService with injected fakes", () => {
         return yield* stackService.executeSync;
       }).pipe(
         Effect.provide(
-          Layer.mergeAll(
-            jjLayer,
-            repoLayer,
-            gitLayer,
-            githubLayer,
-            processLayer,
-            StackServiceLive,
-          ),
+          Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive),
         ),
       ),
     );
@@ -709,11 +662,7 @@ describe("StackService with injected fakes", () => {
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
-      editWorkingCopyOnStack: ({
-        rootBookmarkName,
-        currentBookmarkName,
-        defaultBranch,
-      }) =>
+      editWorkingCopyOnStack: ({ rootBookmarkName, currentBookmarkName, defaultBranch }) =>
         Effect.sync(() => {
           editStackCalls.push({
             rootBookmarkName,
@@ -723,11 +672,8 @@ describe("StackService with injected fakes", () => {
           return "";
         }),
       editWorkingCopyOnBookmark: () =>
-        Effect.die(
-          "editWorkingCopyOnBookmark should not run with an active child.",
-        ),
-      logBookmarks: () =>
-        Effect.die("logBookmarks should not be used in this test."),
+        Effect.die("editWorkingCopyOnBookmark should not run with an active child."),
+      logBookmarks: () => Effect.die("logBookmarks should not be used in this test."),
       diffCurrentStack: () => Effect.succeed(""),
     });
 
@@ -770,8 +716,7 @@ describe("StackService with injected fakes", () => {
         ),
       findPullRequestByHead: () =>
         Effect.die("findPullRequestByHead should not run in batch mode."),
-      createPullRequest: () =>
-        Effect.die("createPullRequest should not run for an existing PR."),
+      createPullRequest: () => Effect.die("createPullRequest should not run for an existing PR."),
       updatePullRequest: ({ baseBranch }) =>
         Effect.sync(() => {
           if (baseBranch !== undefined) {
@@ -816,14 +761,7 @@ describe("StackService with injected fakes", () => {
         return yield* stackService.executeSync;
       }).pipe(
         Effect.provide(
-          Layer.mergeAll(
-            jjLayer,
-            repoLayer,
-            gitLayer,
-            githubLayer,
-            processLayer,
-            StackServiceLive,
-          ),
+          Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive),
         ),
       ),
     );
@@ -857,9 +795,7 @@ describe("StackService with injected fakes", () => {
     expect(result.updatedPullRequestNumbers).toEqual([]);
     expect(result.updatedCommentPullRequestNumbers).toEqual([12, 13]);
     expect(result.warnings).toEqual([]);
-    expect(
-      result.statusEntries.every((entry) => entry.remoteBranchExists),
-    ).toBe(true);
+    expect(result.statusEntries.every((entry) => entry.remoteBranchExists)).toBe(true);
     expect(result.statusEntries[1]?.pullRequest?.headRefName).toBe("feat/ui");
     expect(harness.describedBookmarks).toEqual([]);
   });
@@ -923,24 +859,17 @@ describe("StackService with injected fakes", () => {
       fetchOrigin: Effect.sync(() => {
         events.push("fetch");
       }),
-      getRepoInfo: Effect.die(
-        "repo info should come from prepared sync state.",
-      ),
+      getRepoInfo: Effect.die("repo info should come from prepared sync state."),
     });
 
     const githubLayer = Layer.succeed(GitHubService, {
       findPullRequestsByHeads: () =>
-        Effect.succeed(
-          new Map([["feat/base", preparedEntries[0]!.pullRequest!]]),
-        ),
+        Effect.succeed(new Map([["feat/base", preparedEntries[0]!.pullRequest!]])),
       findPullRequestByHead: () => Effect.succeed(null),
-      createPullRequest: () =>
-        Effect.die("createPullRequest should not run during local refresh."),
+      createPullRequest: () => Effect.die("createPullRequest should not run during local refresh."),
       updatePullRequest: () => Effect.void,
       mergePullRequestWhenReady: () =>
-        Effect.die(
-          "mergePullRequestWhenReady should not run during local refresh.",
-        ),
+        Effect.die("mergePullRequestWhenReady should not run during local refresh."),
       listIssueComments: () => Effect.succeed([]),
       createIssueComment: () => Effect.void,
       updateIssueComment: () => Effect.void,
@@ -985,26 +914,13 @@ describe("StackService with injected fakes", () => {
         });
       }).pipe(
         Effect.provide(
-          Layer.mergeAll(
-            jjLayer,
-            repoLayer,
-            gitLayer,
-            githubLayer,
-            processLayer,
-            StackServiceLive,
-          ),
+          Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive),
         ),
       ),
     );
 
     expect(events[0]).toBe("fetch");
-    expect(events).toEqual([
-      "fetch",
-      "move-main",
-      "status",
-      "edit-stack",
-      "status",
-    ]);
+    expect(events).toEqual(["fetch", "move-main", "status", "edit-stack", "status"]);
   });
 
   it("updates existing PR metadata instead of creating a duplicate", async () => {
@@ -1057,9 +973,7 @@ describe("StackService with injected fakes", () => {
         Effect.sync(() => {
           describedBookmarks.push(bookmarkName);
           currentStack = currentStack.map((entry) =>
-            entry.name === bookmarkName
-              ? { ...entry, description: bookmarkName }
-              : entry,
+            entry.name === bookmarkName ? { ...entry, description: bookmarkName } : entry,
           );
         }),
       createBookmark: () => Effect.void,
@@ -1097,9 +1011,7 @@ describe("StackService with injected fakes", () => {
           new Map(
             branchNames.flatMap((branchName) => {
               const pullRequest = pullRequests.get(branchName);
-              return pullRequest === undefined
-                ? []
-                : [[branchName, pullRequest] as const];
+              return pullRequest === undefined ? [] : [[branchName, pullRequest] as const];
             }),
           ),
         ),
@@ -1168,14 +1080,7 @@ describe("StackService with injected fakes", () => {
         return yield* stackService.executeSync;
       }).pipe(
         Effect.provide(
-          Layer.mergeAll(
-            jjLayer,
-            repoLayer,
-            gitLayer,
-            githubLayer,
-            processLayer,
-            StackServiceLive,
-          ),
+          Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive),
         ),
       ),
     );
@@ -1245,9 +1150,7 @@ describe("StackService with injected fakes", () => {
       findPullRequestsByHeads: () => Effect.succeed(new Map()),
       findPullRequestByHead: () => Effect.succeed(null),
       createPullRequest: () =>
-        Effect.die(
-          "createPullRequest should not run without a published remote branch.",
-        ),
+        Effect.die("createPullRequest should not run without a published remote branch."),
       updatePullRequest: () => Effect.void,
       mergePullRequestWhenReady: () => Effect.void,
       listIssueComments: () => Effect.succeed([]),
@@ -1290,14 +1193,7 @@ describe("StackService with injected fakes", () => {
         return yield* stackService.executeSync;
       }).pipe(
         Effect.provide(
-          Layer.mergeAll(
-            jjLayer,
-            repoLayer,
-            gitLayer,
-            githubLayer,
-            processLayer,
-            StackServiceLive,
-          ),
+          Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive),
         ),
       ),
     );
@@ -1308,9 +1204,7 @@ describe("StackService with injected fakes", () => {
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(CliError);
-        expect(failure.value.message).toContain(
-          "still not published on origin after push",
-        );
+        expect(failure.value.message).toContain("still not published on origin after push");
       }
     }
   });
@@ -1430,14 +1324,7 @@ describe("StackService with injected fakes", () => {
         return yield* stackService.executeSync;
       }).pipe(
         Effect.provide(
-          Layer.mergeAll(
-            jjLayer,
-            repoLayer,
-            gitLayer,
-            githubLayer,
-            processLayer,
-            StackServiceLive,
-          ),
+          Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive),
         ),
       ),
     );
@@ -1505,9 +1392,7 @@ describe("buildSyncPlanFromStatus", () => {
       "main",
     );
 
-    expect(plan.closedEntries[0]?.actions).toContain(
-      "PR #31 is closed; removed from active stack",
-    );
+    expect(plan.closedEntries[0]?.actions).toContain("PR #31 is closed; removed from active stack");
     expect(plan.githubActions).toHaveLength(1);
     expect(plan.githubActions[0]?.intendedBaseBranch).toBe("main");
     expect(plan.githubActions[0]?.actions).toContain(
@@ -1726,9 +1611,7 @@ describe("buildSyncPlanFromStatus", () => {
       "blocked by local conflict in feat/base; resolve parent before syncing this subtree",
     );
     expect(plan.blockedEntries[1]?.actions).not.toContain("push bookmark");
-    expect(plan.blockedEntries[1]?.actions).not.toContain(
-      expect.stringContaining("create PR"),
-    );
+    expect(plan.blockedEntries[1]?.actions).not.toContain(expect.stringContaining("create PR"));
   });
 
   it("does not recreate or mutate merged pull requests", () => {
@@ -1763,13 +1646,9 @@ describe("buildSyncPlanFromStatus", () => {
 
     expect(plan.completionState).toBe("stack-complete");
     expect(plan.githubActions).toEqual([]);
-    expect(plan.landedEntries[0]?.actions).toContain(
-      "PR #55 is merged; removed from active stack",
-    );
+    expect(plan.landedEntries[0]?.actions).toContain("PR #55 is merged; removed from active stack");
     expect(plan.landedEntries[0]?.actions).not.toContain("push bookmark");
-    expect(plan.landedEntries[0]?.actions).not.toContain(
-      expect.stringContaining("create PR"),
-    );
+    expect(plan.landedEntries[0]?.actions).not.toContain(expect.stringContaining("create PR"));
     expect(plan.landedEntries[0]?.actions).not.toContain(
       expect.stringContaining("retarget PR #55"),
     );
@@ -2043,11 +1922,7 @@ describe("selectCurrentBookmarkTree", () => {
 
     const selected = selectCurrentBookmarkTree(entries, "feat/right");
 
-    expect(selected.map((entry) => entry.name)).toEqual([
-      "feat/base",
-      "feat/right",
-      "feat/left",
-    ]);
+    expect(selected.map((entry) => entry.name)).toEqual(["feat/base", "feat/right", "feat/left"]);
   });
 });
 describe("renderStackComment", () => {
@@ -2076,9 +1951,7 @@ describe("renderStackComment", () => {
     ]);
 
     expect(comment).toContain(stackCommentMarker);
-    expect(comment).toContain(
-      "[#12](https://github.com/MH15/jjacks/pull/12) `feat/base`",
-    );
+    expect(comment).toContain("[#12](https://github.com/MH15/jjacks/pull/12) `feat/base`");
     expect(comment).toContain("**current** `feat/ui` -> pending PR");
   });
 
@@ -2120,9 +1993,7 @@ describe("renderStackComment", () => {
     expect(comment).toContain(
       "**current** [#12](https://github.com/MH15/jjacks/pull/12) `feat/base`",
     );
-    expect(comment).toContain(
-      "[#13](https://github.com/MH15/jjacks/pull/13) `feat/ui`",
-    );
+    expect(comment).toContain("[#13](https://github.com/MH15/jjacks/pull/13) `feat/ui`");
     expect(comment).not.toContain(
       "**current** [#13](https://github.com/MH15/jjacks/pull/13) `feat/ui`",
     );
@@ -2188,9 +2059,7 @@ describe("renderStackComment", () => {
       },
     ]);
 
-    expect(comment).toContain(
-      "[#12](https://github.com/MH15/jjacks/pull/12) `feat/base`",
-    );
+    expect(comment).toContain("[#12](https://github.com/MH15/jjacks/pull/12) `feat/base`");
     expect(comment).toContain(
       "**current** [#13](https://github.com/MH15/jjacks/pull/13) `feat/ui`",
     );
@@ -2269,12 +2138,8 @@ describe("renderStackComment", () => {
       },
     ]);
 
-    expect(comment).toContain(
-      "[#28](https://github.com/MH15/jjacks/pull/28) `mh/base`",
-    );
-    expect(comment).toContain(
-      "  - [#29](https://github.com/MH15/jjacks/pull/29) `mh/alias`",
-    );
+    expect(comment).toContain("[#28](https://github.com/MH15/jjacks/pull/28) `mh/base`");
+    expect(comment).toContain("  - [#29](https://github.com/MH15/jjacks/pull/29) `mh/alias`");
     expect(comment).toContain(
       "  - **current** [#30](https://github.com/MH15/jjacks/pull/30) `mh/timing`",
     );
@@ -2301,9 +2166,7 @@ describe("upsertStackCommentInBody", () => {
         "old stack",
         "<!-- /jjacks:stack -->",
       ].join("\n"),
-      ["<!-- jjacks:stack -->", "new stack", "<!-- /jjacks:stack -->"].join(
-        "\n",
-      ),
+      ["<!-- jjacks:stack -->", "new stack", "<!-- /jjacks:stack -->"].join("\n"),
     );
 
     expect(body).toContain("Human description.");

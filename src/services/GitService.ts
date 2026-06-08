@@ -25,16 +25,16 @@ export class GitService extends Context.Tag("GitService")<
       CliError,
       ProcessService
     >;
-    readonly pushBookmarks: (bookmarkNames: ReadonlyArray<string>) => Effect.Effect<void, CliError, ProcessService>;
-    readonly pushBookmark: (
-      bookmarkName: string
+    readonly pushBookmarks: (
+      bookmarkNames: ReadonlyArray<string>,
     ) => Effect.Effect<void, CliError, ProcessService>;
+    readonly pushBookmark: (bookmarkName: string) => Effect.Effect<void, CliError, ProcessService>;
   }
 >() {}
 
 const defaultRemoteState = {
   remoteBranchExists: false,
-  needsBookmarkPush: true
+  needsBookmarkPush: true,
 } as const;
 
 const parseRemoteState = (originLine: string | undefined) => ({
@@ -43,7 +43,7 @@ const parseRemoteState = (originLine: string | undefined) => ({
     originLine === undefined ||
     originLine.includes("(not created yet)") ||
     originLine.includes("(ahead by") ||
-    originLine.includes("(behind by")
+    originLine.includes("(behind by"),
 });
 
 const make = {
@@ -54,13 +54,19 @@ const make = {
       }
 
       const process = yield* ProcessService;
-      const result = yield* process.run("jj", ["bookmark", "list", ...bookmarkNames, "--all-remotes"], {
-        allowNonZeroExit: true
-      });
+      const result = yield* process.run(
+        "jj",
+        ["bookmark", "list", ...bookmarkNames, "--all-remotes"],
+        {
+          allowNonZeroExit: true,
+        },
+      );
 
       if (result.exitCode !== 0) {
         return yield* Effect.fail(
-          new CliError(`Failed to inspect remote state for bookmarks.\n${result.stderr || result.stdout}`)
+          new CliError(
+            `Failed to inspect remote state for bookmarks.\n${result.stderr || result.stdout}`,
+          ),
         );
       }
 
@@ -118,14 +124,18 @@ const make = {
       }
 
       const process = yield* ProcessService;
-      const args = ["git", "push", ...bookmarkNames.flatMap((bookmarkName) => ["--bookmark", bookmarkName])];
+      const args = [
+        "git",
+        "push",
+        ...bookmarkNames.flatMap((bookmarkName) => ["--bookmark", bookmarkName]),
+      ];
       yield* process.run("jj", args);
     }),
 
   pushBookmark: (bookmarkName: string) =>
     Effect.gen(function* () {
       yield* make.pushBookmarks([bookmarkName]);
-    })
+    }),
 };
 
 export const GitServiceLive = Layer.succeed(GitService, make);

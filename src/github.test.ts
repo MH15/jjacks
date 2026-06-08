@@ -25,8 +25,8 @@ describe("GitHubService.findPullRequestsByHeads", () => {
                     baseRefName: "main",
                     state: "MERGED",
                     isDraft: false,
-                    body: ""
-                  }
+                    body: "",
+                  },
                 ]
               : [
                   {
@@ -38,7 +38,7 @@ describe("GitHubService.findPullRequestsByHeads", () => {
                     baseRefName: "mh/open-questions",
                     state: "MERGED",
                     isDraft: false,
-                    body: ""
+                    body: "",
                   },
                   {
                     number: 57,
@@ -49,21 +49,21 @@ describe("GitHubService.findPullRequestsByHeads", () => {
                     baseRefName: "main",
                     state: "OPEN",
                     isDraft: false,
-                    body: ""
-                  }
-                ]
+                    body: "",
+                  },
+                ],
           ),
           stderr: "",
-          exitCode: 0
+          exitCode: 0,
         });
-      }
+      },
     });
 
     const pullRequests = await Effect.runPromise(
       Effect.gen(function* () {
         const github = yield* GitHubService;
         return yield* github.findPullRequestsByHeads(["mh/open-questions", "remove-refresh"]);
-      }).pipe(Effect.provide(Layer.mergeAll(processLayer, GitHubServiceLive)))
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, GitHubServiceLive))),
     );
 
     expect(calls[0]).toEqual([
@@ -76,7 +76,7 @@ describe("GitHubService.findPullRequestsByHeads", () => {
       "--json",
       "number,url,title,headRefName,headRepositoryOwner,baseRefName,state,isDraft,body",
       "--jq",
-      expect.any(String)
+      expect.any(String),
     ]);
     expect(calls[1]).toEqual([
       "pr",
@@ -88,7 +88,7 @@ describe("GitHubService.findPullRequestsByHeads", () => {
       "--json",
       "number,url,title,headRefName,headRepositoryOwner,baseRefName,state,isDraft,body",
       "--jq",
-      expect.any(String)
+      expect.any(String),
     ]);
     expect(pullRequests.get("mh/open-questions")?.state).toBe("MERGED");
     expect(pullRequests.get("remove-refresh")?.number).toBe(57);
@@ -109,7 +109,7 @@ describe("GitHubService.findPullRequestsByHeads", () => {
               baseRefName: "main",
               state: "OPEN",
               isDraft: false,
-              body: ""
+              body: "",
             },
             {
               number: 13,
@@ -120,19 +120,19 @@ describe("GitHubService.findPullRequestsByHeads", () => {
               baseRefName: "main",
               state: "OPEN",
               isDraft: false,
-              body: ""
-            }
+              body: "",
+            },
           ]),
           stderr: "",
-          exitCode: 0
-        })
+          exitCode: 0,
+        }),
     });
 
     const exit = await Effect.runPromiseExit(
       Effect.gen(function* () {
         const github = yield* GitHubService;
         return yield* github.findPullRequestsByHeads(["feat/shared"]);
-      }).pipe(Effect.provide(Layer.mergeAll(processLayer, GitHubServiceLive)))
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, GitHubServiceLive))),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -141,7 +141,9 @@ describe("GitHubService.findPullRequestsByHeads", () => {
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(CliError);
-        expect(failure.value.message).toContain("Multiple open pull requests found for branch feat/shared");
+        expect(failure.value.message).toContain(
+          "Multiple open pull requests found for branch feat/shared",
+        );
         expect(failure.value.message).toContain("PR #12 alice:feat/shared");
         expect(failure.value.message).toContain("PR #13 bob:feat/shared");
       }
@@ -158,14 +160,14 @@ describe("GitHubService.createPullRequest", () => {
             new CliError(
               [
                 "Command failed: gh pr create --head feat/ui --base main --title feat/ui --body ",
-                "pull request create failed: GraphQL: No commits between main and feat/ui (createPullRequest)"
-              ].join("\n")
-            )
+                "pull request create failed: GraphQL: No commits between main and feat/ui (createPullRequest)",
+              ].join("\n"),
+            ),
           );
         }
 
         return Effect.die(`Unexpected command: gh ${args.join(" ")}`);
-      }
+      },
     });
 
     const exit = await Effect.runPromiseExit(
@@ -174,9 +176,9 @@ describe("GitHubService.createPullRequest", () => {
         return yield* github.createPullRequest({
           headBranch: "feat/ui",
           baseBranch: "main",
-          title: "feat/ui"
+          title: "feat/ui",
         });
-      }).pipe(Effect.provide(Layer.mergeAll(processLayer, GitHubServiceLive)))
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, GitHubServiceLive))),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -201,16 +203,16 @@ describe("GitHubService.mergePullRequestWhenReady", () => {
         return Effect.succeed({
           stdout: "",
           stderr: "",
-          exitCode: 0
+          exitCode: 0,
         });
-      }
+      },
     });
 
     await Effect.runPromise(
       Effect.gen(function* () {
         const github = yield* GitHubService;
         yield* github.mergePullRequestWhenReady(42);
-      }).pipe(Effect.provide(Layer.mergeAll(processLayer, GitHubServiceLive)))
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, GitHubServiceLive))),
     );
 
     expect(calls).toEqual([["pr", "merge", "42", "--squash", "--auto"]]);
@@ -224,15 +226,15 @@ describe("GitHubService.listIssueComments", () => {
         Effect.succeed({
           stdout: "{not-json",
           stderr: "",
-          exitCode: 0
-        })
+          exitCode: 0,
+        }),
     });
 
     const exit = await Effect.runPromiseExit(
       Effect.gen(function* () {
         const github = yield* GitHubService;
         return yield* github.listIssueComments(38);
-      }).pipe(Effect.provide(Layer.mergeAll(processLayer, GitHubServiceLive)))
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, GitHubServiceLive))),
     );
 
     expect(exit._tag).toBe("Failure");

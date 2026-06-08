@@ -8,7 +8,7 @@ export const BookmarkNode = Schema.Struct({
   changeId: Schema.String,
   commitId: Schema.String,
   description: Schema.String,
-  parentBookmarkName: OptionalString
+  parentBookmarkName: OptionalString,
 }).annotations({ identifier: "BookmarkNode" });
 export type BookmarkNode = Schema.Schema.Type<typeof BookmarkNode>;
 
@@ -17,7 +17,7 @@ export const StackEntry = Schema.Struct({
   branchName: Schema.String,
   isCurrent: Schema.Boolean,
   isEmpty: OptionalBoolean,
-  hasConflict: OptionalBoolean
+  hasConflict: OptionalBoolean,
 }).annotations({ identifier: "StackEntry" });
 export type StackEntry = Schema.Schema.Type<typeof StackEntry>;
 
@@ -30,14 +30,14 @@ export const PullRequestSummary = Schema.Struct({
   baseRefName: Schema.String,
   state: OptionalString,
   isDraft: Schema.Boolean,
-  body: Schema.String
+  body: Schema.String,
 }).annotations({ identifier: "PullRequestSummary" });
 export type PullRequestSummary = Schema.Schema.Type<typeof PullRequestSummary>;
 
 export const PullRequestComment = Schema.Struct({
   id: Schema.Number,
   body: Schema.String,
-  url: Schema.String
+  url: Schema.String,
 }).annotations({ identifier: "PullRequestComment" });
 export type PullRequestComment = Schema.Schema.Type<typeof PullRequestComment>;
 
@@ -46,7 +46,7 @@ export const StackStatusEntry = Schema.Struct({
   pullRequest: Schema.NullOr(PullRequestSummary),
   remoteBranchExists: Schema.Boolean,
   needsBookmarkPush: Schema.Boolean,
-  blockedBy: OptionalString
+  blockedBy: OptionalString,
 }).annotations({ identifier: "StackStatusEntry" });
 export type StackStatusEntry = Schema.Schema.Type<typeof StackStatusEntry>;
 
@@ -56,14 +56,14 @@ export const SyncPlanEntry = Schema.Struct({
   pullRequest: Schema.NullOr(PullRequestSummary),
   remoteBranchExists: Schema.Boolean,
   needsBookmarkPush: Schema.Boolean,
-  actions: Schema.Array(Schema.String)
+  actions: Schema.Array(Schema.String),
 }).annotations({ identifier: "SyncPlanEntry" });
 export type SyncPlanEntry = Schema.Schema.Type<typeof SyncPlanEntry>;
 
 export const SyncPlanInfoEntry = Schema.Struct({
   entry: StackEntry,
   pullRequest: Schema.NullOr(PullRequestSummary),
-  actions: Schema.Array(Schema.String)
+  actions: Schema.Array(Schema.String),
 }).annotations({ identifier: "SyncPlanInfoEntry" });
 export type SyncPlanInfoEntry = Schema.Schema.Type<typeof SyncPlanInfoEntry>;
 
@@ -74,14 +74,14 @@ export const SyncPlan = Schema.Struct({
   closedEntries: Schema.Array(SyncPlanInfoEntry),
   blockedEntries: Schema.Array(SyncPlanInfoEntry),
   hasExecutableWork: Schema.Boolean,
-  completionState: Schema.Literal("active-stack", "stack-complete", "empty")
+  completionState: Schema.Literal("active-stack", "stack-complete", "empty"),
 }).annotations({ identifier: "SyncPlan" });
 export type SyncPlan = Schema.Schema.Type<typeof SyncPlan>;
 
 export const RepoInfo = Schema.Struct({
   root: Schema.String,
   gitRemote: OptionalString,
-  defaultBranch: OptionalString
+  defaultBranch: OptionalString,
 }).annotations({ identifier: "RepoInfo" });
 export type RepoInfo = Schema.Schema.Type<typeof RepoInfo>;
 
@@ -92,6 +92,6 @@ export const ExecuteSyncResult = Schema.Struct({
   updatedCommentPullRequestNumbers: Schema.Array(Schema.Number),
   warnings: Schema.Array(Schema.String),
   plan: SyncPlan,
-  statusEntries: Schema.Array(StackStatusEntry)
+  statusEntries: Schema.Array(StackStatusEntry),
 }).annotations({ identifier: "ExecuteSyncResult" });
 export type ExecuteSyncResult = Schema.Schema.Type<typeof ExecuteSyncResult>;
