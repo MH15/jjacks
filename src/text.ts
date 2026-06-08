@@ -75,8 +75,8 @@ const formatBookmarkLine = (
     return name;
   }
 
-  const prLabel = color ? chalk.cyan(`PR #${entry.pullRequest.number}`) : `PR #${entry.pullRequest.number}`;
-  return `${name} (${prLabel})`;
+  const prLink = color ? chalk.cyan(entry.pullRequest.url) : entry.pullRequest.url;
+  return `${name} ${prLink}`;
 };
 
 const formatAction = (action: string, color: boolean): string => {
