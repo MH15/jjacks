@@ -112,10 +112,29 @@ That is the core idea behind `jjacks sync`:
 
 You need:
 
+- Node.js 22 or newer
+- `git`
+- `jj`
+- GitHub CLI `gh`
+- `gh auth login` completed for the target GitHub host
 - a Git repo that is also a `jj` repo
 - a configured GitHub remote
 - `gh` auth that can create and edit pull requests
 - `advance-bookmarks.enabled = true`
+
+Install from a local checkout until the first package release:
+
+```bash
+npm install
+npm run build
+npm link
+```
+
+After a package release:
+
+```bash
+npm install --global jjacks
+```
 
 ## Config
 
@@ -237,6 +256,14 @@ For each syncable active stack entry, it should also show:
 - whether an existing PR title or base will be updated
 - what stack comment changes are planned
 
+For automation or scripts, use:
+
+```bash
+jjacks sync --dry-run
+```
+
+That prints the plan without changing local state or GitHub.
+
 ### 5. Apply the plan
 
 When the preview looks right, answer `Y` to apply it.
@@ -246,6 +273,17 @@ For a non-interactive apply:
 ```bash
 jjacks sync --execute
 ```
+
+`--execute` may fetch, move the local default bookmark, push stack bookmarks, create or edit pull requests, and update stack breadcrumbs.
+
+If it fails midway:
+
+- run `jjacks status`
+- inspect the local stack and PR mapping
+- fix the underlying issue, such as GitHub auth, branch protection, conflicts, or a missing remote
+- rerun `jjacks sync`
+
+`jjacks` does not currently attempt rollback for GitHub side effects. Most steps are rediscovered on the next run, so rerunning sync after fixing the root cause is the intended recovery path.
 
 ## Moving Around the Stack
 
@@ -296,7 +334,6 @@ Examples:
 
 Right now `jjacks` is still intentionally narrow:
 
-- no npm package release yet
 - no PR body authoring
 - no generalized multi-stack repo management UI
 - no attempt to model every possible `jj` topology

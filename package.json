@@ -1,11 +1,23 @@
 {
   "name": "jjacks",
   "version": "0.1.0",
-  "private": true,
   "description": "Sync a jj bookmark stack with GitHub pull requests.",
+  "homepage": "https://github.com/MH15/jjacks#readme",
+  "bugs": {
+    "url": "https://github.com/MH15/jjacks/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MH15/jjacks.git"
+  },
   "bin": {
     "jjacks": "./dist/cli.js"
   },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
   "type": "module",
   "scripts": {
     "build": "tsup --config tsup.config.ts && chmod +x dist/cli.js",
@@ -13,6 +25,7 @@
     "format": "oxfmt src *.ts *.json AGENTS.md README.md docs notes",
     "format:check": "oxfmt --check src *.ts *.json AGENTS.md README.md docs notes",
     "lint": "oxlint --deny-warnings src *.ts",
+    "prepack": "npm run build",
     "start": "node --enable-source-maps dist/cli.js",
     "test": "vitest run --exclude 'src/integration/**/*.integration.test.ts'",
     "test:integration": "npm run build && vitest run --config vitest.integration.config.ts",
