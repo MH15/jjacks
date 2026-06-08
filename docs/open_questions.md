@@ -14,6 +14,8 @@ The core happy path is in good shape for internal dogfooding:
 - Conflict analysis blocks conflicted entries and their descendants while allowing clean sibling subtrees to remain syncable.
 - Unit tests cover planning, PR lookup, navigation, text rendering, and sync behavior.
 - Integration tests run real `git`, real `jj`, the built CLI, and a fake `gh` executable in CI.
+- Execute-path integration tests now cover PR creation, PR metadata updates, issue-comment stack breadcrumbs, PR-description stack breadcrumbs, merged lower-layer retargeting, conflicted sibling isolation, and noninteractive multi-child navigation safety.
+- Npm package contents are now allowlisted to runtime files: `dist`, `README.md`, `LICENSE`, and package metadata.
 - oxlint and oxfmt are enabled through `npm run check`, and CI runs that check.
 
 Known local verification at the time this was updated:
@@ -27,47 +29,26 @@ Known local verification at the time this was updated:
 
 These are the blockers before calling `jjacks` production ready for public or broad team use.
 
-### 1. Npm Packaging Is Not Ready
+### 1. More Non-`main` Default Branch Coverage Is Needed
 
-`package.json` still marks the package as private, and `npm pack --dry-run` currently includes the vendored `repos/effect` tree, tests, source files, CI files, notes, and development-only docs.
+Most stack and sync flows ask Git or jj for the repository default branch. A regression probe now verifies that `jjacks diff` also uses the repo default branch when choosing the default diff base for a single-bookmark stack.
 
-That makes the package too large and leaks reference material that should never be published as part of the CLI.
+The regression probe creates a repo whose default branch is `trunk` and runs:
+
+```bash
+jjacks diff --summary
+```
+
+Expected behavior: `diff` resolves the repo default branch and diffs against `trunk` in that repo.
 
 #### 90/10 Implementation
 
-Add a package allowlist:
+- Add non-`main` default branch coverage for `sync`, `down`, `log`, and future adoption commands.
+- Keep the non-`main` `diff` integration test as a regression guard.
 
-```json
-{
-  "files": ["dist", "README.md", "LICENSE"]
-}
-```
+### 2. Integration Coverage Still Needs More Workflow Breadth
 
-Then decide whether the first launch target is:
-
-- npm package release
-- GitHub release artifact
-- repo-local/internal install only
-
-For npm, also add or verify:
-
-- `"private": false` or remove `"private"`
-- repository metadata
-- issue tracker metadata
-- publish access and package name ownership
-- a release script that builds before packing
-
-Run:
-
-```bash
-npm --cache /tmp/jjacks-npm-cache pack --dry-run
-```
-
-The tarball should contain only the runtime CLI and user-facing package metadata.
-
-### 2. Integration Coverage Is Too Thin
-
-The integration harness exists and is valuable, but it still covers only a small slice of real workflows.
+The integration harness is now covering more execute-path behavior, but it still needs more adoption and lifecycle scenarios before broad production use.
 
 Current integration coverage proves:
 
@@ -75,6 +56,9 @@ Current integration coverage proves:
 - fake GitHub discovery works through a fake `gh` executable
 - duplicate open PR ambiguity fails loudly
 - sync dry-run can render a plan for a real two-bookmark stack without calling real GitHub
+- sync execute can push bookmarks, create missing PRs, update stale PR metadata, update existing stack comments, write PR-description breadcrumbs, and retarget surviving children after a lower PR merged
+- conflicted sibling subtrees do not prevent clean sibling stack comments from syncing
+- noninteractive multi-child `up` fails clearly instead of guessing
 
 That is enough to keep development honest, but not enough to trust broad production use.
 
@@ -84,13 +68,10 @@ Extend the integration test harness with execute-path scenarios:
 
 - create first bookmark from an empty trunk continuation
 - create child bookmark from an existing bookmark
-- execute sync creates missing PRs through fake `gh`
-- execute sync updates existing PR title/base metadata
-- execute sync updates stack comments or PR body breadcrumbs
-- sync after simulated merged lower layer retargets surviving children
-- conflicted entries block their descendants from GitHub mutation
-- clean sibling subtrees still sync when another subtree is blocked
-- `up` and `down` move through a multi-child stack predictably
+- execute sync after GitHub-side failures, including partial comment update failures
+- sync when the default branch is not `main`
+- `get` and future `track` adoption flows against real `git` and `jj`
+- interactive multi-child navigation with a real TTY harness or a narrow prompt abstraction
 
 Keep GitHub mocked at the process boundary with a fake `gh` executable earlier in `PATH`. No CI test should require real network access or real GitHub auth.
 
