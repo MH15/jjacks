@@ -148,6 +148,92 @@ describe("JjService.moveToBookmark", () => {
   });
 });
 
+describe("JjService.moveToTrunkContinuation", () => {
+  it("creates an unbookmarked continuation on the default branch", async () => {
+    const calls: Array<ReadonlyArray<string>> = [];
+
+    const processLayer = makeProcessLayer((_command, args) => {
+      calls.push(args);
+
+      if (args[0] === "config") {
+        return { stdout: "true", stderr: "", exitCode: 0 };
+      }
+
+      if (args[0] === "log" && args[1] === "-r" && args[2] === "@") {
+        return {
+          stdout: "feat/base\tmain\tjjacks",
+          stderr: "",
+          exitCode: 0
+        };
+      }
+
+      if (args[0] === "new") {
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+
+      if (args[0] === "log" && args[2] === "@ | @-") {
+        return {
+          stdout: "trunk continuation summary",
+          stderr: "",
+          exitCode: 0
+        };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    const output = await Effect.runPromise(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        return yield* jjService.moveToTrunkContinuation("main");
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive)))
+    );
+
+    expect(output).toBe("trunk continuation summary");
+    expect(calls.some((args) => args.join(" ") === "new main")).toBe(true);
+  });
+
+  it("reuses the current unbookmarked continuation on the default branch", async () => {
+    const calls: Array<ReadonlyArray<string>> = [];
+
+    const processLayer = makeProcessLayer((_command, args) => {
+      calls.push(args);
+
+      if (args[0] === "config") {
+        return { stdout: "true", stderr: "", exitCode: 0 };
+      }
+
+      if (args[0] === "log" && args[1] === "-r" && args[2] === "@") {
+        return {
+          stdout: "\tmain\tjjacks",
+          stderr: "",
+          exitCode: 0
+        };
+      }
+
+      if (args[0] === "log" && args[2] === "@ | @-") {
+        return {
+          stdout: "existing trunk continuation summary",
+          stderr: "",
+          exitCode: 0
+        };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    const output = await Effect.runPromise(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        return yield* jjService.moveToTrunkContinuation("main");
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive)))
+    );
+
+    expect(output).toBe("existing trunk continuation summary");
+    expect(calls.some((args) => args[0] === "new")).toBe(false);
+  });
+});
+
 describe("JjService.createBookmark", () => {
   it("reuses the current unbookmarked working copy even when its description is blank", async () => {
     const calls: Array<ReadonlyArray<string>> = [];

@@ -22,6 +22,7 @@ export class JjService extends Context.Tag("JjService")<
       readonly message: string;
     }) => Effect.Effect<void, CliError, ProcessService>;
     readonly moveToBookmark: (bookmarkName: string) => Effect.Effect<string, CliError, ProcessService>;
+    readonly moveToTrunkContinuation: (defaultBranch: string) => Effect.Effect<string, CliError, ProcessService>;
     readonly moveUp: Effect.Effect<string, CliError, ProcessService>;
     readonly moveDown: Effect.Effect<string, CliError, ProcessService>;
     readonly syncBookmarkToRemote: (bookmarkName: string) => Effect.Effect<void, CliError, ProcessService>;
@@ -212,6 +213,8 @@ const parseWorkingCopyStateLine = (line: string): WorkingCopyState | null => {
 
 const createBookmarkStateTemplate =
   `change_id.short() ++ "\t" ++ bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ description.first_line() ++ "\t" ++ "jjacks" ++ "\n"`;
+const trunkContinuationStateTemplate =
+  `bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ parents.map(|p| p.bookmarks().map(|b| b.name()).join(",")).join("|") ++ "\t" ++ "jjacks" ++ "\n"`;
 
 const parseCreateBookmarkStateLine = (line: string): WorkingCopyState | null => {
   if (line.length === 0) {
@@ -537,6 +540,25 @@ const make = {
       const process = yield* ProcessService;
       yield* ensureAdvanceBookmarksEnabled;
       yield* process.run("jj", ["edit", bookmarkName]);
+      const summary = yield* process.run("jj", ["log", "-r", "@ | @-", "--no-graph"]);
+      return summary.stdout;
+    }),
+
+  moveToTrunkContinuation: (defaultBranch: string) =>
+    Effect.gen(function* () {
+      const process = yield* ProcessService;
+      yield* ensureAdvanceBookmarksEnabled;
+      const workingCopyState = yield* process.run("jj", ["log", "-r", "@", "-T", trunkContinuationStateTemplate, "--no-graph"]);
+      const [bookmarks = "", parentBookmarks = "", marker] = workingCopyState.stdout.split("\t");
+      const parentBookmarkNames = parentBookmarks
+        .split("|")
+        .flatMap((segment) => segment.split(","))
+        .filter((bookmark) => bookmark.length > 0);
+
+      if (marker !== "jjacks" || bookmarks.length > 0 || !parentBookmarkNames.includes(defaultBranch)) {
+        yield* process.run("jj", ["new", defaultBranch]);
+      }
+
       const summary = yield* process.run("jj", ["log", "-r", "@ | @-", "--no-graph"]);
       return summary.stdout;
     }),

@@ -15,7 +15,7 @@ import { GitHubService, GitHubServiceLive } from "./services/GitHubService";
 import { JjService, JjServiceLive } from "./services/JjService";
 import { ProgressService, ProgressServiceLive, type ProgressServiceApi } from "./services/ProgressService";
 import { ProcessServiceLive } from "./services/ProcessService";
-import { RepoServiceLive } from "./services/RepoService";
+import { RepoService, RepoServiceLive } from "./services/RepoService";
 import { StackService, StackServiceLive, type PreparedSyncState } from "./services/StackService";
 
 const sharedLayer = Layer.mergeAll(
@@ -134,6 +134,12 @@ const resolveBookmarkMove = (direction: "up" | "down") => Effect.gen(function* (
       return yield* Effect.fail(noTargetBookmarkError(direction, movePlan.currentBookmarkName));
     case "move-to-bookmark":
       return jjService.moveToBookmark(movePlan.bookmarkName);
+    case "move-to-trunk-continuation":
+      return Effect.gen(function* () {
+        const repo = yield* RepoService;
+        const repoInfo = yield* repo.getRepoInfo;
+        return yield* jjService.moveToTrunkContinuation(repoInfo.defaultBranch ?? "main");
+      });
     case "choose-child-bookmark":
       return Effect.gen(function* () {
         yield* ensureInteractiveTerminal(`Moving up from ${movePlan.parentBookmarkName}`);
@@ -174,7 +180,7 @@ const down = Command.make("down", {}, () =>
     const move = yield* resolveBookmarkMove("down");
     yield* runMoveCommand("down", move);
   })
-).pipe(Command.withDescription("Move to the previous bookmark in the current bookmark stack."));
+).pipe(Command.withDescription("Move to the previous bookmark in the current stack, or to a trunk continuation from the root."));
 
 const d = Command.make("d", {}, () =>
   Effect.gen(function* () {

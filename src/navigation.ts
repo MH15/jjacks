@@ -16,6 +16,9 @@ export type BookmarkMovePlan =
       readonly bookmarkName: string;
     }
   | {
+      readonly kind: "move-to-trunk-continuation";
+    }
+  | {
       readonly kind: "choose-child-bookmark";
       readonly parentBookmarkName: string;
       readonly childBookmarkNames: ReadonlyArray<string>;
@@ -61,9 +64,7 @@ export const resolveBookmarkMovePlan = (
   if (direction === "down") {
     return currentEntry.parentBookmarkName === undefined
       ? {
-          kind: "no-target-bookmark",
-          direction,
-          currentBookmarkName: currentEntry.name
+          kind: "move-to-trunk-continuation"
         }
       : {
           kind: "move-to-bookmark",

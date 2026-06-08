@@ -92,18 +92,18 @@ describe("resolveBookmarkMovePlan", () => {
     });
   });
 
-  it("reports when there is no target bookmark in the requested direction", () => {
+  it("moves down to a trunk continuation from a root bookmark", () => {
     const entries = [
       makeEntry({ name: "feat/base", isCurrent: true }),
       makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base" })
     ];
 
     expect(resolveBookmarkMovePlan("down", entries)).toEqual({
-      kind: "no-target-bookmark",
-      direction: "down",
-      currentBookmarkName: "feat/base"
+      kind: "move-to-trunk-continuation"
     });
+  });
 
+  it("reports when there is no target bookmark in the requested direction", () => {
     expect(resolveBookmarkMovePlan("up", [
       makeEntry({ name: "feat/ui", parentBookmarkName: "feat/base", isCurrent: true })
     ])).toEqual({

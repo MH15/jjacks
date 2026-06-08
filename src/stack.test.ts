@@ -3,8 +3,17 @@ import { Cause, Effect, Layer } from "effect";
 
 import type { RepoInfo, StackEntry, StackStatusEntry } from "../src/domain";
 import { CliError } from "../src/errors";
-import { analyzeReviewStack, buildSyncPlanFromStatus, renderStackComment, stackCommentMarker, upsertStackCommentInBody } from "../src/stack";
-import { orderStackNodes, selectCurrentBookmarkTree } from "../src/services/JjService";
+import {
+  analyzeReviewStack,
+  buildSyncPlanFromStatus,
+  renderStackComment,
+  stackCommentMarker,
+  upsertStackCommentInBody,
+} from "../src/stack";
+import {
+  orderStackNodes,
+  selectCurrentBookmarkTree,
+} from "../src/services/JjService";
 import { GitService } from "../src/services/GitService";
 import { GitHubService } from "../src/services/GitHubService";
 import { JjService } from "../src/services/JjService";
@@ -20,7 +29,7 @@ const stack: ReadonlyArray<StackEntry> = [
     description: "feat/base",
     parentBookmarkName: undefined,
     branchName: "feat/base",
-    isCurrent: false
+    isCurrent: false,
   },
   {
     name: "feat/ui",
@@ -29,14 +38,14 @@ const stack: ReadonlyArray<StackEntry> = [
     description: "feat/ui",
     parentBookmarkName: "feat/base",
     branchName: "feat/ui",
-    isCurrent: true
-  }
+    isCurrent: true,
+  },
 ];
 
 const repoInfo: RepoInfo = {
   root: "/tmp/repo",
   gitRemote: "https://github.com/MH15/jjacks.git",
-  defaultBranch: "main"
+  defaultBranch: "main",
 };
 
 const makeLayer = (options?: {
@@ -69,9 +78,9 @@ const makeLayer = (options?: {
         headRefName: "feat/base",
         baseRefName: "main",
         isDraft: false,
-        body: ""
-      }
-    ]
+        body: "",
+      },
+    ],
   ]);
 
   if (options?.existingChildPr !== undefined) {
@@ -82,7 +91,7 @@ const makeLayer = (options?: {
       headRefName: "feat/ui",
       baseRefName: options.existingChildPr.baseRefName,
       isDraft: false,
-      body: ""
+      body: "",
     });
   }
   const createdPullRequests: Array<string> = [];
@@ -94,10 +103,10 @@ const makeLayer = (options?: {
         {
           id: 1001,
           url: "https://github.com/MH15/jjacks/issues/comments/1001",
-          body: "old comment"
-        }
-      ]
-    ]
+          body: "old comment",
+        },
+      ],
+    ],
   ]);
   const updatedCommentPullRequests: Array<number> = [];
   const describedBookmarks: Array<string> = [];
@@ -114,27 +123,35 @@ const makeLayer = (options?: {
       }),
     createBookmark: () => Effect.void,
     moveToBookmark: () => Effect.succeed(""),
+    moveToTrunkContinuation: () => Effect.succeed(""),
     moveUp: Effect.succeed(""),
     moveDown: Effect.succeed(""),
     syncBookmarkToRemote: () => Effect.void,
     editWorkingCopyOnStack: () => Effect.succeed(""),
     editWorkingCopyOnBookmark: () => Effect.succeed(""),
     logBookmarks: () => Effect.succeed(""),
-    diffCurrentStack: () => Effect.succeed("")
+    diffCurrentStack: () => Effect.succeed(""),
   });
 
   const repoLayer = Layer.succeed(RepoService, {
     fetchOrigin: Effect.void,
-    getRepoInfo: Effect.succeed(repoInfo)
+    getRepoInfo: Effect.succeed(repoInfo),
   });
 
   const githubLayer = Layer.succeed(GitHubService, {
     findPullRequestsByHeads: (branchNames: ReadonlyArray<string>) =>
-      Effect.succeed(new Map(branchNames.flatMap((branchName) => {
-        const pullRequest = pullRequests.get(branchName);
-        return pullRequest === undefined ? [] : [[branchName, pullRequest] as const];
-      }))),
-    findPullRequestByHead: (branchName: string) => Effect.succeed(pullRequests.get(branchName) ?? null),
+      Effect.succeed(
+        new Map(
+          branchNames.flatMap((branchName) => {
+            const pullRequest = pullRequests.get(branchName);
+            return pullRequest === undefined
+              ? []
+              : [[branchName, pullRequest] as const];
+          }),
+        ),
+      ),
+    findPullRequestByHead: (branchName: string) =>
+      Effect.succeed(pullRequests.get(branchName) ?? null),
     createPullRequest: ({ headBranch, baseBranch, title }) =>
       Effect.sync(() => {
         const number = pullRequests.size + 12;
@@ -145,7 +162,7 @@ const makeLayer = (options?: {
           headRefName: headBranch,
           baseRefName: baseBranch,
           isDraft: false,
-          body: ""
+          body: "",
         };
         pullRequests.set(headBranch, created);
         createdPullRequests.push(headBranch);
@@ -159,7 +176,7 @@ const makeLayer = (options?: {
               ...pr,
               baseRefName: baseBranch ?? pr.baseRefName,
               title: title ?? pr.title,
-              body: body ?? pr.body
+              body: body ?? pr.body,
             });
             updatedPullRequests.push(number);
             return;
@@ -167,14 +184,15 @@ const makeLayer = (options?: {
         }
       }),
     mergePullRequestWhenReady: () => Effect.void,
-    listIssueComments: (pullRequestNumber: number) => Effect.succeed(issueComments.get(pullRequestNumber) ?? []),
+    listIssueComments: (pullRequestNumber: number) =>
+      Effect.succeed(issueComments.get(pullRequestNumber) ?? []),
     createIssueComment: ({ pullRequestNumber, body }) =>
       Effect.sync(() => {
         const comments = issueComments.get(pullRequestNumber) ?? [];
         comments.push({
           id: pullRequestNumber * 1000,
           url: `https://github.com/MH15/jjacks/issues/comments/${pullRequestNumber * 1000}`,
-          body
+          body,
         });
         issueComments.set(pullRequestNumber, comments);
         updatedCommentPullRequests.push(pullRequestNumber);
@@ -189,22 +207,26 @@ const makeLayer = (options?: {
             return;
           }
         }
-      })
+      }),
   });
 
   const gitLayer = Layer.succeed(GitService, {
     getBookmarksRemoteState: (bookmarkNames: ReadonlyArray<string>) =>
-      Effect.succeed(new Map(bookmarkNames.map((bookmarkName) => [
-        bookmarkName,
-        {
-          remoteBranchExists: pushedBranches.has(bookmarkName),
-          needsBookmarkPush: !pushedBranches.has(bookmarkName)
-        }
-      ]))),
+      Effect.succeed(
+        new Map(
+          bookmarkNames.map((bookmarkName) => [
+            bookmarkName,
+            {
+              remoteBranchExists: pushedBranches.has(bookmarkName),
+              needsBookmarkPush: !pushedBranches.has(bookmarkName),
+            },
+          ]),
+        ),
+      ),
     getBookmarkRemoteState: (bookmarkName: string) =>
       Effect.succeed({
         remoteBranchExists: pushedBranches.has(bookmarkName),
-        needsBookmarkPush: !pushedBranches.has(bookmarkName)
+        needsBookmarkPush: !pushedBranches.has(bookmarkName),
       }),
     pushBookmarks: (bookmarkNames: ReadonlyArray<string>) =>
       Effect.sync(() => {
@@ -217,21 +239,30 @@ const makeLayer = (options?: {
       Effect.sync(() => {
         pushedBookmarks.push(bookmarkName);
         pushedBranches.add(bookmarkName);
-      })
+      }),
   });
 
   const processLayer = Layer.succeed(ProcessService, {
     run: () =>
-      Effect.die("ProcessService should not be used when fake JJ/GitHub/Repo services are provided.")
+      Effect.die(
+        "ProcessService should not be used when fake JJ/GitHub/Repo services are provided.",
+      ),
   });
 
   return {
-    layer: Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive),
+    layer: Layer.mergeAll(
+      jjLayer,
+      repoLayer,
+      gitLayer,
+      githubLayer,
+      processLayer,
+      StackServiceLive,
+    ),
     pushedBookmarks,
     createdPullRequests,
     updatedPullRequests,
     updatedCommentPullRequests,
-    describedBookmarks
+    describedBookmarks,
   };
 };
 
@@ -241,23 +272,27 @@ describe("StackService with injected fakes", () => {
       Effect.gen(function* () {
         const stackService = yield* StackService;
         return yield* stackService.buildSyncPlan;
-      }).pipe(Effect.provide(makeLayer().layer))
+      }).pipe(Effect.provide(makeLayer().layer)),
     );
 
     expect(plan.githubActions).toHaveLength(2);
     expect(plan.githubActions[0]).toMatchObject({
       intendedBaseBranch: "main",
       remoteBranchExists: true,
-      needsBookmarkPush: false
+      needsBookmarkPush: false,
     });
-    expect(plan.githubActions[0]?.actions).not.toContainEqual(expect.stringContaining("create PR"));
+    expect(plan.githubActions[0]?.actions).not.toContainEqual(
+      expect.stringContaining("create PR"),
+    );
     expect(plan.githubActions[1]).toMatchObject({
       intendedBaseBranch: "feat/base",
       remoteBranchExists: false,
-      needsBookmarkPush: true
+      needsBookmarkPush: true,
     });
     expect(plan.githubActions[1]?.actions).toContain("push bookmark");
-    expect(plan.githubActions[1]?.actions).toContain("create PR with base feat/base");
+    expect(plan.githubActions[1]?.actions).toContain(
+      "create PR with base feat/base",
+    );
   });
 
   it("returns repo-scoped status entries with PR lookup results", async () => {
@@ -265,7 +300,7 @@ describe("StackService with injected fakes", () => {
       Effect.gen(function* () {
         const stackService = yield* StackService;
         return yield* stackService.getStatus;
-      }).pipe(Effect.provide(makeLayer().layer))
+      }).pipe(Effect.provide(makeLayer().layer)),
     );
 
     expect(status.repoRoot).toBe("/tmp/repo");
@@ -287,62 +322,87 @@ describe("StackService with injected fakes", () => {
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
       moveToBookmark: () => Effect.succeed(""),
+      moveToTrunkContinuation: () => Effect.succeed(""),
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
       editWorkingCopyOnStack: () => Effect.succeed(""),
       editWorkingCopyOnBookmark: () => Effect.succeed(""),
-      logBookmarks: () => Effect.die("logBookmarks should not be used in this test."),
-      diffCurrentStack: () => Effect.die("diffCurrentStack should not be used in this test.")
+      logBookmarks: () =>
+        Effect.die("logBookmarks should not be used in this test."),
+      diffCurrentStack: () =>
+        Effect.die("diffCurrentStack should not be used in this test."),
     });
 
     const repoLayer = Layer.succeed(RepoService, {
       fetchOrigin: Effect.void,
-      getRepoInfo: Effect.succeed(repoInfo)
+      getRepoInfo: Effect.succeed(repoInfo),
     });
 
     const githubLayer = Layer.succeed(GitHubService, {
-      findPullRequestsByHeads: () => Effect.die("findPullRequestsByHeads should not be used for an empty stack."),
-      findPullRequestByHead: () => Effect.die("findPullRequestByHead should not be used for an empty stack."),
-      createPullRequest: () => Effect.die("createPullRequest should not be used for an empty stack."),
+      findPullRequestsByHeads: () =>
+        Effect.die(
+          "findPullRequestsByHeads should not be used for an empty stack.",
+        ),
+      findPullRequestByHead: () =>
+        Effect.die(
+          "findPullRequestByHead should not be used for an empty stack.",
+        ),
+      createPullRequest: () =>
+        Effect.die("createPullRequest should not be used for an empty stack."),
       updatePullRequest: () => Effect.void,
       mergePullRequestWhenReady: () => Effect.void,
       listIssueComments: () => Effect.succeed([]),
       createIssueComment: () => Effect.void,
-      updateIssueComment: () => Effect.void
+      updateIssueComment: () => Effect.void,
     });
 
     const gitLayer = Layer.succeed(GitService, {
-      getBookmarksRemoteState: () => Effect.die("getBookmarksRemoteState should not be used for an empty stack."),
-      getBookmarkRemoteState: () => Effect.die("getBookmarkRemoteState should not be used for an empty stack."),
+      getBookmarksRemoteState: () =>
+        Effect.die(
+          "getBookmarksRemoteState should not be used for an empty stack.",
+        ),
+      getBookmarkRemoteState: () =>
+        Effect.die(
+          "getBookmarkRemoteState should not be used for an empty stack.",
+        ),
       pushBookmarks: () => Effect.void,
-      pushBookmark: () => Effect.void
+      pushBookmark: () => Effect.void,
     });
 
     const processLayer = Layer.succeed(ProcessService, {
       run: () =>
-        Effect.die("ProcessService should not be used when fake JJ/GitHub/Repo services are provided.")
+        Effect.die(
+          "ProcessService should not be used when fake JJ/GitHub/Repo services are provided.",
+        ),
     });
 
-    const layer = Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive);
+    const layer = Layer.mergeAll(
+      jjLayer,
+      repoLayer,
+      gitLayer,
+      githubLayer,
+      processLayer,
+      StackServiceLive,
+    );
 
     const status = await Effect.runPromise(
       Effect.gen(function* () {
         const stackService = yield* StackService;
         return yield* stackService.getStatus;
-      }).pipe(Effect.provide(layer))
+      }).pipe(Effect.provide(layer)),
     );
     const plan = await Effect.runPromise(
       Effect.gen(function* () {
         const stackService = yield* StackService;
         return yield* stackService.buildSyncPlan;
-      }).pipe(Effect.provide(layer))
+      }).pipe(Effect.provide(layer)),
     );
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const stackService = yield* StackService;
         return yield* stackService.executeSync;
-      }).pipe(Effect.provide(layer))
+      }).pipe(Effect.provide(layer)),
     );
 
     expect(status.entries).toEqual([]);
@@ -362,8 +422,8 @@ describe("StackService with injected fakes", () => {
         description: "feat/elsewhere",
         parentBookmarkName: undefined,
         branchName: "feat/elsewhere",
-        isCurrent: false
-      }
+        isCurrent: false,
+      },
     ];
 
     const jjLayer = Layer.succeed(JjService, {
@@ -375,62 +435,89 @@ describe("StackService with injected fakes", () => {
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
       moveToBookmark: () => Effect.succeed(""),
+      moveToTrunkContinuation: () => Effect.succeed(""),
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
       editWorkingCopyOnStack: () => Effect.succeed(""),
       editWorkingCopyOnBookmark: () => Effect.succeed(""),
-      logBookmarks: () => Effect.die("logBookmarks should not be used in this test."),
-      diffCurrentStack: () => Effect.die("diffCurrentStack should not be used in this test.")
+      logBookmarks: () =>
+        Effect.die("logBookmarks should not be used in this test."),
+      diffCurrentStack: () =>
+        Effect.die("diffCurrentStack should not be used in this test."),
     });
 
     const repoLayer = Layer.succeed(RepoService, {
       fetchOrigin: Effect.void,
-      getRepoInfo: Effect.succeed(repoInfo)
+      getRepoInfo: Effect.succeed(repoInfo),
     });
 
     const githubLayer = Layer.succeed(GitHubService, {
-      findPullRequestsByHeads: () => Effect.die("findPullRequestsByHeads should not be used without an active stack."),
-      findPullRequestByHead: () => Effect.die("findPullRequestByHead should not be used without an active stack."),
-      createPullRequest: () => Effect.die("createPullRequest should not be used without an active stack."),
+      findPullRequestsByHeads: () =>
+        Effect.die(
+          "findPullRequestsByHeads should not be used without an active stack.",
+        ),
+      findPullRequestByHead: () =>
+        Effect.die(
+          "findPullRequestByHead should not be used without an active stack.",
+        ),
+      createPullRequest: () =>
+        Effect.die(
+          "createPullRequest should not be used without an active stack.",
+        ),
       updatePullRequest: () => Effect.void,
       mergePullRequestWhenReady: () => Effect.void,
       listIssueComments: () => Effect.succeed([]),
       createIssueComment: () => Effect.void,
-      updateIssueComment: () => Effect.void
+      updateIssueComment: () => Effect.void,
     });
 
     const gitLayer = Layer.succeed(GitService, {
-      getBookmarksRemoteState: () => Effect.die("getBookmarksRemoteState should not be used without an active stack."),
-      getBookmarkRemoteState: () => Effect.die("getBookmarkRemoteState should not be used without an active stack."),
+      getBookmarksRemoteState: () =>
+        Effect.die(
+          "getBookmarksRemoteState should not be used without an active stack.",
+        ),
+      getBookmarkRemoteState: () =>
+        Effect.die(
+          "getBookmarkRemoteState should not be used without an active stack.",
+        ),
       pushBookmarks: () => Effect.void,
-      pushBookmark: () => Effect.void
+      pushBookmark: () => Effect.void,
     });
 
     const processLayer = Layer.succeed(ProcessService, {
       run: () =>
-        Effect.die("ProcessService should not be used when fake JJ/GitHub/Repo services are provided.")
+        Effect.die(
+          "ProcessService should not be used when fake JJ/GitHub/Repo services are provided.",
+        ),
     });
 
-    const layer = Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive);
+    const layer = Layer.mergeAll(
+      jjLayer,
+      repoLayer,
+      gitLayer,
+      githubLayer,
+      processLayer,
+      StackServiceLive,
+    );
 
     const status = await Effect.runPromise(
       Effect.gen(function* () {
         const stackService = yield* StackService;
         return yield* stackService.getStatus;
-      }).pipe(Effect.provide(layer))
+      }).pipe(Effect.provide(layer)),
     );
     const plan = await Effect.runPromise(
       Effect.gen(function* () {
         const stackService = yield* StackService;
         return yield* stackService.buildSyncPlan;
-      }).pipe(Effect.provide(layer))
+      }).pipe(Effect.provide(layer)),
     );
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const stackService = yield* StackService;
         return yield* stackService.executeSync;
-      }).pipe(Effect.provide(layer))
+      }).pipe(Effect.provide(layer)),
     );
 
     expect(status.entries).toEqual([]);
@@ -450,8 +537,8 @@ describe("StackService with injected fakes", () => {
         description: "fix/merged-parent-retarget",
         parentBookmarkName: undefined,
         branchName: "fix/merged-parent-retarget",
-        isCurrent: true
-      }
+        isCurrent: true,
+      },
     ];
     const editedBookmarks: Array<string> = [];
 
@@ -461,25 +548,33 @@ describe("StackService with injected fakes", () => {
       getCurrentStack: Effect.succeed(currentStack),
       getCurrentTree: Effect.succeed(currentStack),
       getTrackedBookmarks: Effect.succeed(currentStack),
-      ensureBookmarkDescription: () => Effect.die("ensureBookmarkDescription should not run for a completed stack."),
+      ensureBookmarkDescription: () =>
+        Effect.die(
+          "ensureBookmarkDescription should not run for a completed stack.",
+        ),
       createBookmark: () => Effect.void,
       moveToBookmark: () => Effect.succeed(""),
+      moveToTrunkContinuation: () => Effect.succeed(""),
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
-      editWorkingCopyOnStack: () => Effect.die("editWorkingCopyOnStack should not run for a completed stack."),
+      editWorkingCopyOnStack: () =>
+        Effect.die(
+          "editWorkingCopyOnStack should not run for a completed stack.",
+        ),
       editWorkingCopyOnBookmark: ({ bookmarkName }) =>
         Effect.sync(() => {
           editedBookmarks.push(bookmarkName);
           return "";
         }),
-      logBookmarks: () => Effect.die("logBookmarks should not be used in this test."),
-      diffCurrentStack: () => Effect.succeed("")
+      logBookmarks: () =>
+        Effect.die("logBookmarks should not be used in this test."),
+      diffCurrentStack: () => Effect.succeed(""),
     });
 
     const repoLayer = Layer.succeed(RepoService, {
       fetchOrigin: Effect.void,
-      getRepoInfo: Effect.succeed(repoInfo)
+      getRepoInfo: Effect.succeed(repoInfo),
     });
 
     const githubLayer = Layer.succeed(GitHubService, {
@@ -496,44 +591,73 @@ describe("StackService with injected fakes", () => {
                 baseRefName: "main",
                 state: "MERGED",
                 isDraft: false,
-                body: ""
-              }
-            ]
-          ])
+                body: "",
+              },
+            ],
+          ]),
         ),
-      findPullRequestByHead: () => Effect.die("findPullRequestByHead should not run in batch mode."),
-      createPullRequest: () => Effect.die("createPullRequest should not run for a completed stack."),
-      updatePullRequest: () => Effect.die("updatePullRequest should not run for a completed stack."),
-      mergePullRequestWhenReady: () => Effect.die("mergePullRequestWhenReady should not run for a completed stack."),
-      listIssueComments: () => Effect.die("listIssueComments should not run for a completed stack."),
-      createIssueComment: () => Effect.die("createIssueComment should not run for a completed stack."),
-      updateIssueComment: () => Effect.die("updateIssueComment should not run for a completed stack.")
+      findPullRequestByHead: () =>
+        Effect.die("findPullRequestByHead should not run in batch mode."),
+      createPullRequest: () =>
+        Effect.die("createPullRequest should not run for a completed stack."),
+      updatePullRequest: () =>
+        Effect.die("updatePullRequest should not run for a completed stack."),
+      mergePullRequestWhenReady: () =>
+        Effect.die(
+          "mergePullRequestWhenReady should not run for a completed stack.",
+        ),
+      listIssueComments: () =>
+        Effect.die("listIssueComments should not run for a completed stack."),
+      createIssueComment: () =>
+        Effect.die("createIssueComment should not run for a completed stack."),
+      updateIssueComment: () =>
+        Effect.die("updateIssueComment should not run for a completed stack."),
     });
 
     const gitLayer = Layer.succeed(GitService, {
       getBookmarksRemoteState: (bookmarkNames: ReadonlyArray<string>) =>
-        Effect.succeed(new Map(bookmarkNames.map((bookmarkName) => [
-          bookmarkName,
-          {
-            remoteBranchExists: true,
-            needsBookmarkPush: false
-          }
-        ]))),
-      getBookmarkRemoteState: () => Effect.die("getBookmarkRemoteState should not run in batch mode."),
-      pushBookmarks: () => Effect.die("pushBookmarks should not run for a completed stack."),
-      pushBookmark: () => Effect.die("pushBookmark should not run for a completed stack.")
+        Effect.succeed(
+          new Map(
+            bookmarkNames.map((bookmarkName) => [
+              bookmarkName,
+              {
+                remoteBranchExists: true,
+                needsBookmarkPush: false,
+              },
+            ]),
+          ),
+        ),
+      getBookmarkRemoteState: () =>
+        Effect.die("getBookmarkRemoteState should not run in batch mode."),
+      pushBookmarks: () =>
+        Effect.die("pushBookmarks should not run for a completed stack."),
+      pushBookmark: () =>
+        Effect.die("pushBookmark should not run for a completed stack."),
     });
 
     const processLayer = Layer.succeed(ProcessService, {
       run: () =>
-        Effect.die("ProcessService should not be used when fake JJ/GitHub/Repo services are provided.")
+        Effect.die(
+          "ProcessService should not be used when fake JJ/GitHub/Repo services are provided.",
+        ),
     });
 
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const stackService = yield* StackService;
         return yield* stackService.executeSync;
-      }).pipe(Effect.provide(Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive)))
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            jjLayer,
+            repoLayer,
+            gitLayer,
+            githubLayer,
+            processLayer,
+            StackServiceLive,
+          ),
+        ),
+      ),
     );
 
     expect(editedBookmarks).toEqual(["main"]);
@@ -553,7 +677,7 @@ describe("StackService with injected fakes", () => {
         description: "remove-refresh",
         parentBookmarkName: undefined,
         branchName: "remove-refresh",
-        isCurrent: false
+        isCurrent: false,
       },
       {
         name: "fix/create-next-copy",
@@ -562,8 +686,8 @@ describe("StackService with injected fakes", () => {
         description: "fix/create-next-copy",
         parentBookmarkName: "remove-refresh",
         branchName: "fix/create-next-copy",
-        isCurrent: true
-      }
+        isCurrent: true,
+      },
     ];
     const editStackCalls: Array<{
       readonly rootBookmarkName: string;
@@ -581,22 +705,35 @@ describe("StackService with injected fakes", () => {
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
       moveToBookmark: () => Effect.succeed(""),
+      moveToTrunkContinuation: () => Effect.succeed(""),
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
-      editWorkingCopyOnStack: ({ rootBookmarkName, currentBookmarkName, defaultBranch }) =>
+      editWorkingCopyOnStack: ({
+        rootBookmarkName,
+        currentBookmarkName,
+        defaultBranch,
+      }) =>
         Effect.sync(() => {
-          editStackCalls.push({ rootBookmarkName, currentBookmarkName, defaultBranch });
+          editStackCalls.push({
+            rootBookmarkName,
+            currentBookmarkName,
+            defaultBranch,
+          });
           return "";
         }),
-      editWorkingCopyOnBookmark: () => Effect.die("editWorkingCopyOnBookmark should not run with an active child."),
-      logBookmarks: () => Effect.die("logBookmarks should not be used in this test."),
-      diffCurrentStack: () => Effect.succeed("")
+      editWorkingCopyOnBookmark: () =>
+        Effect.die(
+          "editWorkingCopyOnBookmark should not run with an active child.",
+        ),
+      logBookmarks: () =>
+        Effect.die("logBookmarks should not be used in this test."),
+      diffCurrentStack: () => Effect.succeed(""),
     });
 
     const repoLayer = Layer.succeed(RepoService, {
       fetchOrigin: Effect.void,
-      getRepoInfo: Effect.succeed(repoInfo)
+      getRepoInfo: Effect.succeed(repoInfo),
     });
 
     const githubLayer = Layer.succeed(GitHubService, {
@@ -613,8 +750,8 @@ describe("StackService with injected fakes", () => {
                 baseRefName: "main",
                 state: "MERGED",
                 isDraft: false,
-                body: ""
-              }
+                body: "",
+              },
             ],
             [
               "fix/create-next-copy",
@@ -626,13 +763,15 @@ describe("StackService with injected fakes", () => {
                 baseRefName: "remove-refresh",
                 state: "OPEN",
                 isDraft: false,
-                body: ""
-              }
-            ]
-          ])
+                body: "",
+              },
+            ],
+          ]),
         ),
-      findPullRequestByHead: () => Effect.die("findPullRequestByHead should not run in batch mode."),
-      createPullRequest: () => Effect.die("createPullRequest should not run for an existing PR."),
+      findPullRequestByHead: () =>
+        Effect.die("findPullRequestByHead should not run in batch mode."),
+      createPullRequest: () =>
+        Effect.die("createPullRequest should not run for an existing PR."),
       updatePullRequest: ({ baseBranch }) =>
         Effect.sync(() => {
           if (baseBranch !== undefined) {
@@ -642,41 +781,59 @@ describe("StackService with injected fakes", () => {
       mergePullRequestWhenReady: () => Effect.void,
       listIssueComments: () => Effect.succeed([]),
       createIssueComment: () => Effect.void,
-      updateIssueComment: () => Effect.void
+      updateIssueComment: () => Effect.void,
     });
 
     const gitLayer = Layer.succeed(GitService, {
       getBookmarksRemoteState: (bookmarkNames: ReadonlyArray<string>) =>
-        Effect.succeed(new Map(bookmarkNames.map((bookmarkName) => [
-          bookmarkName,
-          {
-            remoteBranchExists: true,
-            needsBookmarkPush: false
-          }
-        ]))),
-      getBookmarkRemoteState: () => Effect.die("getBookmarkRemoteState should not run in batch mode."),
+        Effect.succeed(
+          new Map(
+            bookmarkNames.map((bookmarkName) => [
+              bookmarkName,
+              {
+                remoteBranchExists: true,
+                needsBookmarkPush: false,
+              },
+            ]),
+          ),
+        ),
+      getBookmarkRemoteState: () =>
+        Effect.die("getBookmarkRemoteState should not run in batch mode."),
       pushBookmarks: () => Effect.void,
-      pushBookmark: () => Effect.void
+      pushBookmark: () => Effect.void,
     });
 
     const processLayer = Layer.succeed(ProcessService, {
       run: () =>
-        Effect.die("ProcessService should not be used when fake JJ/GitHub/Repo services are provided.")
+        Effect.die(
+          "ProcessService should not be used when fake JJ/GitHub/Repo services are provided.",
+        ),
     });
 
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const stackService = yield* StackService;
         return yield* stackService.executeSync;
-      }).pipe(Effect.provide(Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive)))
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            jjLayer,
+            repoLayer,
+            gitLayer,
+            githubLayer,
+            processLayer,
+            StackServiceLive,
+          ),
+        ),
+      ),
     );
 
     expect(editStackCalls).toEqual([
       {
         rootBookmarkName: "fix/create-next-copy",
         currentBookmarkName: "fix/create-next-copy",
-        defaultBranch: "main"
-      }
+        defaultBranch: "main",
+      },
     ]);
     expect(updatedBases).toEqual(["main"]);
     expect(result.plan.githubActions).toHaveLength(1);
@@ -689,7 +846,7 @@ describe("StackService with injected fakes", () => {
       Effect.gen(function* () {
         const stackService = yield* StackService;
         return yield* stackService.executeSync;
-      }).pipe(Effect.provide(harness.layer))
+      }).pipe(Effect.provide(harness.layer)),
     );
 
     expect(harness.pushedBookmarks).toEqual(["feat/ui"]);
@@ -700,7 +857,9 @@ describe("StackService with injected fakes", () => {
     expect(result.updatedPullRequestNumbers).toEqual([]);
     expect(result.updatedCommentPullRequestNumbers).toEqual([12, 13]);
     expect(result.warnings).toEqual([]);
-    expect(result.statusEntries.every((entry) => entry.remoteBranchExists)).toBe(true);
+    expect(
+      result.statusEntries.every((entry) => entry.remoteBranchExists),
+    ).toBe(true);
     expect(result.statusEntries[1]?.pullRequest?.headRefName).toBe("feat/ui");
     expect(harness.describedBookmarks).toEqual([]);
   });
@@ -718,17 +877,17 @@ describe("StackService with injected fakes", () => {
           baseRefName: "main",
           state: "OPEN",
           isDraft: false,
-          body: ""
+          body: "",
         },
         remoteBranchExists: true,
-        needsBookmarkPush: false
+        needsBookmarkPush: false,
       },
       {
         entry: stack[1]!,
         pullRequest: null,
         remoteBranchExists: false,
-        needsBookmarkPush: true
-      }
+        needsBookmarkPush: true,
+      },
     ];
 
     const jjLayer = Layer.succeed(JjService, {
@@ -743,6 +902,7 @@ describe("StackService with injected fakes", () => {
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
       moveToBookmark: () => Effect.succeed(""),
+      moveToTrunkContinuation: () => Effect.succeed(""),
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () =>
@@ -756,48 +916,63 @@ describe("StackService with injected fakes", () => {
         }),
       editWorkingCopyOnBookmark: () => Effect.succeed(""),
       logBookmarks: () => Effect.succeed(""),
-      diffCurrentStack: () => Effect.succeed("")
+      diffCurrentStack: () => Effect.succeed(""),
     });
 
     const repoLayer = Layer.succeed(RepoService, {
       fetchOrigin: Effect.sync(() => {
         events.push("fetch");
       }),
-      getRepoInfo: Effect.die("repo info should come from prepared sync state.")
+      getRepoInfo: Effect.die(
+        "repo info should come from prepared sync state.",
+      ),
     });
 
     const githubLayer = Layer.succeed(GitHubService, {
-      findPullRequestsByHeads: () => Effect.succeed(new Map([["feat/base", preparedEntries[0]!.pullRequest!]])),
+      findPullRequestsByHeads: () =>
+        Effect.succeed(
+          new Map([["feat/base", preparedEntries[0]!.pullRequest!]]),
+        ),
       findPullRequestByHead: () => Effect.succeed(null),
-      createPullRequest: () => Effect.die("createPullRequest should not run during local refresh."),
+      createPullRequest: () =>
+        Effect.die("createPullRequest should not run during local refresh."),
       updatePullRequest: () => Effect.void,
-      mergePullRequestWhenReady: () => Effect.die("mergePullRequestWhenReady should not run during local refresh."),
+      mergePullRequestWhenReady: () =>
+        Effect.die(
+          "mergePullRequestWhenReady should not run during local refresh.",
+        ),
       listIssueComments: () => Effect.succeed([]),
       createIssueComment: () => Effect.void,
-      updateIssueComment: () => Effect.void
+      updateIssueComment: () => Effect.void,
     });
 
     const gitLayer = Layer.succeed(GitService, {
       getBookmarksRemoteState: (bookmarkNames: ReadonlyArray<string>) =>
-        Effect.succeed(new Map(bookmarkNames.map((bookmarkName) => [
-          bookmarkName,
-          {
-            remoteBranchExists: bookmarkName === "feat/base",
-            needsBookmarkPush: bookmarkName !== "feat/base"
-          }
-        ]))),
+        Effect.succeed(
+          new Map(
+            bookmarkNames.map((bookmarkName) => [
+              bookmarkName,
+              {
+                remoteBranchExists: bookmarkName === "feat/base",
+                needsBookmarkPush: bookmarkName !== "feat/base",
+              },
+            ]),
+          ),
+        ),
       getBookmarkRemoteState: () =>
         Effect.succeed({
           remoteBranchExists: true,
-          needsBookmarkPush: false
+          needsBookmarkPush: false,
         }),
       pushBookmarks: () => Effect.void,
-      pushBookmark: () => Effect.void
+      pushBookmark: () => Effect.void,
     });
 
     const processLayer = Layer.succeed(ProcessService, {
       run: () =>
-        Effect.die("ProcessService should not be used when fake JJ/GitHub/Repo services are provided.")
+        Effect.die(
+          "ProcessService should not be used when fake JJ/GitHub/Repo services are provided.",
+        ),
     });
 
     await Effect.runPromise(
@@ -806,13 +981,30 @@ describe("StackService with injected fakes", () => {
         return yield* stackService.refreshLocalStackFromPrepared({
           defaultBranch: "main",
           entries: preparedEntries,
-          preparedAtMs: Date.now()
+          preparedAtMs: Date.now(),
         });
-      }).pipe(Effect.provide(Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive)))
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            jjLayer,
+            repoLayer,
+            gitLayer,
+            githubLayer,
+            processLayer,
+            StackServiceLive,
+          ),
+        ),
+      ),
     );
 
     expect(events[0]).toBe("fetch");
-    expect(events).toEqual(["fetch", "move-main", "status", "edit-stack", "status"]);
+    expect(events).toEqual([
+      "fetch",
+      "move-main",
+      "status",
+      "edit-stack",
+      "status",
+    ]);
   });
 
   it("updates existing PR metadata instead of creating a duplicate", async () => {
@@ -820,14 +1012,14 @@ describe("StackService with injected fakes", () => {
       initiallyPushed: ["feat/base", "feat/ui"],
       existingChildPr: {
         title: "old title",
-        baseRefName: "main"
-      }
+        baseRefName: "main",
+      },
     });
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const stackService = yield* StackService;
         return yield* stackService.executeSync;
-      }).pipe(Effect.provide(harness.layer))
+      }).pipe(Effect.provide(harness.layer)),
     );
 
     expect(harness.createdPullRequests).toEqual([]);
@@ -851,8 +1043,8 @@ describe("StackService with injected fakes", () => {
         description: "",
         parentBookmarkName: undefined,
         branchName: "feat/ui",
-        isCurrent: true
-      }
+        isCurrent: true,
+      },
     ];
 
     const jjLayer = Layer.succeed(JjService, {
@@ -865,23 +1057,26 @@ describe("StackService with injected fakes", () => {
         Effect.sync(() => {
           describedBookmarks.push(bookmarkName);
           currentStack = currentStack.map((entry) =>
-            entry.name === bookmarkName ? { ...entry, description: bookmarkName } : entry
+            entry.name === bookmarkName
+              ? { ...entry, description: bookmarkName }
+              : entry,
           );
-      }),
+        }),
       createBookmark: () => Effect.void,
       moveToBookmark: () => Effect.succeed(""),
+      moveToTrunkContinuation: () => Effect.succeed(""),
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
       editWorkingCopyOnStack: () => Effect.succeed(""),
       editWorkingCopyOnBookmark: () => Effect.succeed(""),
       logBookmarks: () => Effect.succeed(""),
-      diffCurrentStack: () => Effect.succeed("")
+      diffCurrentStack: () => Effect.succeed(""),
     });
 
     const repoLayer = Layer.succeed(RepoService, {
       fetchOrigin: Effect.void,
-      getRepoInfo: Effect.succeed(repoInfo)
+      getRepoInfo: Effect.succeed(repoInfo),
     });
 
     const pullRequests = new Map<
@@ -898,22 +1093,29 @@ describe("StackService with injected fakes", () => {
     >();
     const githubLayer = Layer.succeed(GitHubService, {
       findPullRequestsByHeads: (branchNames: ReadonlyArray<string>) =>
-        Effect.succeed(new Map(branchNames.flatMap((branchName) => {
-          const pullRequest = pullRequests.get(branchName);
-          return pullRequest === undefined ? [] : [[branchName, pullRequest] as const];
-        }))),
-      findPullRequestByHead: (branchName: string) => Effect.succeed(pullRequests.get(branchName) ?? null),
+        Effect.succeed(
+          new Map(
+            branchNames.flatMap((branchName) => {
+              const pullRequest = pullRequests.get(branchName);
+              return pullRequest === undefined
+                ? []
+                : [[branchName, pullRequest] as const];
+            }),
+          ),
+        ),
+      findPullRequestByHead: (branchName: string) =>
+        Effect.succeed(pullRequests.get(branchName) ?? null),
       createPullRequest: ({ headBranch, baseBranch, title }) =>
         Effect.sync(() => {
           const created = {
             number: 13,
             url: "https://github.com/MH15/jjacks/pull/13",
-          title,
-          headRefName: headBranch,
-          baseRefName: baseBranch,
-          isDraft: false,
-          body: ""
-        };
+            title,
+            headRefName: headBranch,
+            baseRefName: baseBranch,
+            isDraft: false,
+            body: "",
+          };
           pullRequests.set(headBranch, created);
           return created;
         }),
@@ -921,23 +1123,27 @@ describe("StackService with injected fakes", () => {
       mergePullRequestWhenReady: () => Effect.void,
       listIssueComments: () => Effect.succeed([]),
       createIssueComment: () => Effect.void,
-      updateIssueComment: () => Effect.void
+      updateIssueComment: () => Effect.void,
     });
 
     let pushed = false;
     const gitLayer = Layer.succeed(GitService, {
       getBookmarksRemoteState: (bookmarkNames: ReadonlyArray<string>) =>
-        Effect.succeed(new Map(bookmarkNames.map((bookmarkName) => [
-          bookmarkName,
-          {
-            remoteBranchExists: pushed,
-            needsBookmarkPush: !pushed
-          }
-        ]))),
+        Effect.succeed(
+          new Map(
+            bookmarkNames.map((bookmarkName) => [
+              bookmarkName,
+              {
+                remoteBranchExists: pushed,
+                needsBookmarkPush: !pushed,
+              },
+            ]),
+          ),
+        ),
       getBookmarkRemoteState: () =>
         Effect.succeed({
           remoteBranchExists: pushed,
-          needsBookmarkPush: !pushed
+          needsBookmarkPush: !pushed,
         }),
       pushBookmarks: () =>
         Effect.sync(() => {
@@ -946,19 +1152,32 @@ describe("StackService with injected fakes", () => {
       pushBookmark: () =>
         Effect.sync(() => {
           pushed = true;
-        })
+        }),
     });
 
     const processLayer = Layer.succeed(ProcessService, {
       run: () =>
-        Effect.die("ProcessService should not be used when fake JJ/GitHub/Repo services are provided.")
+        Effect.die(
+          "ProcessService should not be used when fake JJ/GitHub/Repo services are provided.",
+        ),
     });
 
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const stackService = yield* StackService;
         return yield* stackService.executeSync;
-      }).pipe(Effect.provide(Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive)))
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            jjLayer,
+            repoLayer,
+            gitLayer,
+            githubLayer,
+            processLayer,
+            StackServiceLive,
+          ),
+        ),
+      ),
     );
 
     expect(describedBookmarks).toEqual(["feat/ui"]);
@@ -979,8 +1198,8 @@ describe("StackService with injected fakes", () => {
           description: "feat/ui",
           parentBookmarkName: undefined,
           branchName: "feat/ui",
-          isCurrent: true
-        }
+          isCurrent: true,
+        },
       ] satisfies ReadonlyArray<StackEntry>),
       getCurrentTree: Effect.succeed([
         {
@@ -990,8 +1209,8 @@ describe("StackService with injected fakes", () => {
           description: "feat/ui",
           parentBookmarkName: undefined,
           branchName: "feat/ui",
-          isCurrent: true
-        }
+          isCurrent: true,
+        },
       ] satisfies ReadonlyArray<StackEntry>),
       getTrackedBookmarks: Effect.succeed([
         {
@@ -1001,65 +1220,86 @@ describe("StackService with injected fakes", () => {
           description: "feat/ui",
           parentBookmarkName: undefined,
           branchName: "feat/ui",
-          isCurrent: true
-        }
+          isCurrent: true,
+        },
       ] satisfies ReadonlyArray<StackEntry>),
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
       moveToBookmark: () => Effect.succeed(""),
+      moveToTrunkContinuation: () => Effect.succeed(""),
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
       editWorkingCopyOnStack: () => Effect.succeed(""),
       editWorkingCopyOnBookmark: () => Effect.succeed(""),
       logBookmarks: () => Effect.succeed(""),
-      diffCurrentStack: () => Effect.succeed("")
+      diffCurrentStack: () => Effect.succeed(""),
     });
 
     const repoLayer = Layer.succeed(RepoService, {
       fetchOrigin: Effect.void,
-      getRepoInfo: Effect.succeed(repoInfo)
+      getRepoInfo: Effect.succeed(repoInfo),
     });
 
     const githubLayer = Layer.succeed(GitHubService, {
       findPullRequestsByHeads: () => Effect.succeed(new Map()),
       findPullRequestByHead: () => Effect.succeed(null),
-      createPullRequest: () => Effect.die("createPullRequest should not run without a published remote branch."),
+      createPullRequest: () =>
+        Effect.die(
+          "createPullRequest should not run without a published remote branch.",
+        ),
       updatePullRequest: () => Effect.void,
       mergePullRequestWhenReady: () => Effect.void,
       listIssueComments: () => Effect.succeed([]),
       createIssueComment: () => Effect.void,
-      updateIssueComment: () => Effect.void
+      updateIssueComment: () => Effect.void,
     });
 
     const gitLayer = Layer.succeed(GitService, {
       getBookmarksRemoteState: (bookmarkNames: ReadonlyArray<string>) =>
-        Effect.succeed(new Map(bookmarkNames.map((bookmarkName) => [
-          bookmarkName,
-          {
-            remoteBranchExists: false,
-            needsBookmarkPush: true
-          }
-        ]))),
+        Effect.succeed(
+          new Map(
+            bookmarkNames.map((bookmarkName) => [
+              bookmarkName,
+              {
+                remoteBranchExists: false,
+                needsBookmarkPush: true,
+              },
+            ]),
+          ),
+        ),
       getBookmarkRemoteState: () =>
         Effect.succeed({
           remoteBranchExists: false,
-          needsBookmarkPush: true
+          needsBookmarkPush: true,
         }),
       pushBookmarks: () => Effect.void,
-      pushBookmark: () => Effect.void
+      pushBookmark: () => Effect.void,
     });
 
     const processLayer = Layer.succeed(ProcessService, {
       run: () =>
-        Effect.die("ProcessService should not be used when fake JJ/GitHub/Repo services are provided.")
+        Effect.die(
+          "ProcessService should not be used when fake JJ/GitHub/Repo services are provided.",
+        ),
     });
 
     const exit = await Effect.runPromiseExit(
       Effect.gen(function* () {
         const stackService = yield* StackService;
         return yield* stackService.executeSync;
-      }).pipe(Effect.provide(Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive)))
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            jjLayer,
+            repoLayer,
+            gitLayer,
+            githubLayer,
+            processLayer,
+            StackServiceLive,
+          ),
+        ),
+      ),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -1068,7 +1308,9 @@ describe("StackService with injected fakes", () => {
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(CliError);
-        expect(failure.value.message).toContain("still not published on origin after push");
+        expect(failure.value.message).toContain(
+          "still not published on origin after push",
+        );
       }
     }
   });
@@ -1083,7 +1325,7 @@ describe("StackService with injected fakes", () => {
         parentBookmarkName: undefined,
         branchName: "mh/cleanup-refresh-message",
         isCurrent: false,
-        isEmpty: true
+        isEmpty: true,
       },
       {
         name: "mh/optimize",
@@ -1092,8 +1334,8 @@ describe("StackService with injected fakes", () => {
         description: "mh/optimize",
         parentBookmarkName: "mh/cleanup-refresh-message",
         branchName: "mh/optimize",
-        isCurrent: true
-      }
+        isCurrent: true,
+      },
     ];
 
     const pushedBranches = new Set<string>();
@@ -1107,18 +1349,19 @@ describe("StackService with injected fakes", () => {
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
       moveToBookmark: () => Effect.succeed(""),
+      moveToTrunkContinuation: () => Effect.succeed(""),
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
       editWorkingCopyOnStack: () => Effect.succeed(""),
       editWorkingCopyOnBookmark: () => Effect.succeed(""),
       logBookmarks: () => Effect.succeed(""),
-      diffCurrentStack: () => Effect.succeed("")
+      diffCurrentStack: () => Effect.succeed(""),
     });
 
     const repoLayer = Layer.succeed(RepoService, {
       fetchOrigin: Effect.void,
-      getRepoInfo: Effect.succeed(repoInfo)
+      getRepoInfo: Effect.succeed(repoInfo),
     });
 
     const githubLayer = Layer.succeed(GitHubService, {
@@ -1134,29 +1377,33 @@ describe("StackService with injected fakes", () => {
             headRefName: headBranch,
             baseRefName: baseBranch,
             isDraft: false,
-            body: ""
+            body: "",
           };
         }),
       updatePullRequest: () => Effect.void,
       mergePullRequestWhenReady: () => Effect.void,
       listIssueComments: () => Effect.succeed([]),
       createIssueComment: () => Effect.void,
-      updateIssueComment: () => Effect.void
+      updateIssueComment: () => Effect.void,
     });
 
     const gitLayer = Layer.succeed(GitService, {
       getBookmarksRemoteState: (bookmarkNames: ReadonlyArray<string>) =>
-        Effect.succeed(new Map(bookmarkNames.map((bookmarkName) => [
-          bookmarkName,
-          {
-            remoteBranchExists: pushedBranches.has(bookmarkName),
-            needsBookmarkPush: !pushedBranches.has(bookmarkName)
-          }
-        ]))),
+        Effect.succeed(
+          new Map(
+            bookmarkNames.map((bookmarkName) => [
+              bookmarkName,
+              {
+                remoteBranchExists: pushedBranches.has(bookmarkName),
+                needsBookmarkPush: !pushedBranches.has(bookmarkName),
+              },
+            ]),
+          ),
+        ),
       getBookmarkRemoteState: (bookmarkName: string) =>
         Effect.succeed({
           remoteBranchExists: pushedBranches.has(bookmarkName),
-          needsBookmarkPush: !pushedBranches.has(bookmarkName)
+          needsBookmarkPush: !pushedBranches.has(bookmarkName),
         }),
       pushBookmarks: (bookmarkNames: ReadonlyArray<string>) =>
         Effect.sync(() => {
@@ -1167,19 +1414,32 @@ describe("StackService with injected fakes", () => {
       pushBookmark: (bookmarkName: string) =>
         Effect.sync(() => {
           pushedBranches.add(bookmarkName);
-        })
+        }),
     });
 
     const processLayer = Layer.succeed(ProcessService, {
       run: () =>
-        Effect.die("ProcessService should not be used when fake JJ/GitHub/Repo services are provided.")
+        Effect.die(
+          "ProcessService should not be used when fake JJ/GitHub/Repo services are provided.",
+        ),
     });
 
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const stackService = yield* StackService;
         return yield* stackService.executeSync;
-      }).pipe(Effect.provide(Layer.mergeAll(jjLayer, repoLayer, gitLayer, githubLayer, processLayer, StackServiceLive)))
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            jjLayer,
+            repoLayer,
+            gitLayer,
+            githubLayer,
+            processLayer,
+            StackServiceLive,
+          ),
+        ),
+      ),
     );
 
     expect(result.plan.githubActions).toHaveLength(1);
@@ -1203,7 +1463,7 @@ describe("buildSyncPlanFromStatus", () => {
             description: "feat/abandoned",
             parentBookmarkName: undefined,
             branchName: "feat/abandoned",
-            isCurrent: false
+            isCurrent: false,
           },
           pullRequest: {
             number: 31,
@@ -1213,10 +1473,10 @@ describe("buildSyncPlanFromStatus", () => {
             baseRefName: "main",
             state: "CLOSED",
             isDraft: false,
-            body: ""
+            body: "",
           },
           remoteBranchExists: true,
-          needsBookmarkPush: false
+          needsBookmarkPush: false,
         },
         {
           entry: {
@@ -1226,7 +1486,7 @@ describe("buildSyncPlanFromStatus", () => {
             description: "feat/survivor",
             parentBookmarkName: "feat/abandoned",
             branchName: "feat/survivor",
-            isCurrent: true
+            isCurrent: true,
           },
           pullRequest: {
             number: 32,
@@ -1236,19 +1496,23 @@ describe("buildSyncPlanFromStatus", () => {
             baseRefName: "feat/abandoned",
             state: "OPEN",
             isDraft: false,
-            body: ""
+            body: "",
           },
           remoteBranchExists: true,
-          needsBookmarkPush: false
-        }
+          needsBookmarkPush: false,
+        },
       ],
-      "main"
+      "main",
     );
 
-    expect(plan.closedEntries[0]?.actions).toContain("PR #31 is closed; removed from active stack");
+    expect(plan.closedEntries[0]?.actions).toContain(
+      "PR #31 is closed; removed from active stack",
+    );
     expect(plan.githubActions).toHaveLength(1);
     expect(plan.githubActions[0]?.intendedBaseBranch).toBe("main");
-    expect(plan.githubActions[0]?.actions).toContain("retarget PR #32 base from feat/abandoned to main");
+    expect(plan.githubActions[0]?.actions).toContain(
+      "retarget PR #32 base from feat/abandoned to main",
+    );
   });
 
   it("keeps a clean sibling syncable when a conflicted sibling subtree is blocked", () => {
@@ -1262,7 +1526,7 @@ describe("buildSyncPlanFromStatus", () => {
             description: "feat/base",
             parentBookmarkName: undefined,
             branchName: "feat/base",
-            isCurrent: false
+            isCurrent: false,
           },
           pullRequest: {
             number: 40,
@@ -1272,10 +1536,10 @@ describe("buildSyncPlanFromStatus", () => {
             baseRefName: "main",
             state: "OPEN",
             isDraft: false,
-            body: ""
+            body: "",
           },
           remoteBranchExists: true,
-          needsBookmarkPush: false
+          needsBookmarkPush: false,
         },
         {
           entry: {
@@ -1286,12 +1550,12 @@ describe("buildSyncPlanFromStatus", () => {
             parentBookmarkName: "feat/base",
             branchName: "feat/conflict",
             isCurrent: false,
-            hasConflict: true
+            hasConflict: true,
           },
           pullRequest: null,
           remoteBranchExists: false,
           needsBookmarkPush: true,
-          blockedBy: "feat/conflict"
+          blockedBy: "feat/conflict",
         },
         {
           entry: {
@@ -1301,12 +1565,12 @@ describe("buildSyncPlanFromStatus", () => {
             description: "feat/child",
             parentBookmarkName: "feat/conflict",
             branchName: "feat/child",
-            isCurrent: false
+            isCurrent: false,
           },
           pullRequest: null,
           remoteBranchExists: false,
           needsBookmarkPush: true,
-          blockedBy: "feat/conflict"
+          blockedBy: "feat/conflict",
         },
         {
           entry: {
@@ -1316,18 +1580,24 @@ describe("buildSyncPlanFromStatus", () => {
             description: "feat/clean",
             parentBookmarkName: "feat/base",
             branchName: "feat/clean",
-            isCurrent: true
+            isCurrent: true,
           },
           pullRequest: null,
           remoteBranchExists: false,
-          needsBookmarkPush: true
-        }
+          needsBookmarkPush: true,
+        },
       ],
-      "main"
+      "main",
     );
 
-    expect(analysis.blockedEntries.map((entry) => entry.entry.name)).toEqual(["feat/conflict", "feat/child"]);
-    expect(analysis.syncableEntries.map((entry) => entry.entry.name)).toEqual(["feat/base", "feat/clean"]);
+    expect(analysis.blockedEntries.map((entry) => entry.entry.name)).toEqual([
+      "feat/conflict",
+      "feat/child",
+    ]);
+    expect(analysis.syncableEntries.map((entry) => entry.entry.name)).toEqual([
+      "feat/base",
+      "feat/clean",
+    ]);
     expect(analysis.currentSyncableEntry?.entry.name).toBe("feat/clean");
   });
 
@@ -1342,7 +1612,7 @@ describe("buildSyncPlanFromStatus", () => {
             description: "mh/inquirer",
             parentBookmarkName: "mh/refrehs-fixes",
             branchName: "mh/inquirer",
-            isCurrent: false
+            isCurrent: false,
           },
           pullRequest: {
             number: 17,
@@ -1351,10 +1621,10 @@ describe("buildSyncPlanFromStatus", () => {
             headRefName: "mh/inquirer",
             baseRefName: "mh/refrehs-fixes",
             isDraft: false,
-            body: ""
+            body: "",
           },
           remoteBranchExists: true,
-          needsBookmarkPush: true
+          needsBookmarkPush: true,
         },
         {
           entry: {
@@ -1364,7 +1634,7 @@ describe("buildSyncPlanFromStatus", () => {
             description: "mh/ancestors",
             parentBookmarkName: "mh/inquirer",
             branchName: "mh/ancestors",
-            isCurrent: true
+            isCurrent: true,
           },
           pullRequest: {
             number: 18,
@@ -1373,25 +1643,29 @@ describe("buildSyncPlanFromStatus", () => {
             headRefName: "mh/ancestors",
             baseRefName: "mh/inquirer",
             isDraft: false,
-            body: ""
+            body: "",
           },
           remoteBranchExists: true,
-          needsBookmarkPush: true
-        }
+          needsBookmarkPush: true,
+        },
       ],
-      "main"
+      "main",
     );
 
     expect(plan.localActions).toEqual([
       "fetch origin",
       "move main to main@origin",
       "rebase mh/inquirer onto main",
-      "edit mh/ancestors"
+      "edit mh/ancestors",
     ]);
     expect(plan.githubActions[0]?.intendedBaseBranch).toBe("main");
-    expect(plan.githubActions[0]?.actions).toContain("retarget PR #17 base from mh/refrehs-fixes to main");
+    expect(plan.githubActions[0]?.actions).toContain(
+      "retarget PR #17 base from mh/refrehs-fixes to main",
+    );
     expect(plan.githubActions[1]?.intendedBaseBranch).toBe("mh/inquirer");
-    expect(plan.githubActions[1]?.actions).not.toContain(expect.stringContaining("retarget PR #18"));
+    expect(plan.githubActions[1]?.actions).not.toContain(
+      expect.stringContaining("retarget PR #18"),
+    );
   });
 
   it("blocks a conflicted subtree from GitHub actions", () => {
@@ -1406,7 +1680,7 @@ describe("buildSyncPlanFromStatus", () => {
             parentBookmarkName: undefined,
             branchName: "feat/base",
             isCurrent: false,
-            hasConflict: true
+            hasConflict: true,
           },
           pullRequest: {
             number: 12,
@@ -1415,11 +1689,11 @@ describe("buildSyncPlanFromStatus", () => {
             headRefName: "feat/base",
             baseRefName: "old-base",
             isDraft: false,
-            body: ""
+            body: "",
           },
           remoteBranchExists: true,
           needsBookmarkPush: true,
-          blockedBy: "feat/base"
+          blockedBy: "feat/base",
         },
         {
           entry: {
@@ -1429,24 +1703,32 @@ describe("buildSyncPlanFromStatus", () => {
             description: "feat/ui",
             parentBookmarkName: "feat/base",
             branchName: "feat/ui",
-            isCurrent: true
+            isCurrent: true,
           },
           pullRequest: null,
           remoteBranchExists: false,
           needsBookmarkPush: true,
-          blockedBy: "feat/base"
-        }
+          blockedBy: "feat/base",
+        },
       ],
-      "main"
+      "main",
     );
 
     expect(plan.githubActions).toEqual([]);
-    expect(plan.blockedEntries[0]?.actions).toContain("blocked by local conflict; resolve before syncing this subtree");
+    expect(plan.blockedEntries[0]?.actions).toContain(
+      "blocked by local conflict; resolve before syncing this subtree",
+    );
     expect(plan.blockedEntries[0]?.actions).not.toContain("push bookmark");
-    expect(plan.blockedEntries[0]?.actions).not.toContain(expect.stringContaining("retarget PR #12"));
-    expect(plan.blockedEntries[1]?.actions).toContain("blocked by local conflict in feat/base; resolve parent before syncing this subtree");
+    expect(plan.blockedEntries[0]?.actions).not.toContain(
+      expect.stringContaining("retarget PR #12"),
+    );
+    expect(plan.blockedEntries[1]?.actions).toContain(
+      "blocked by local conflict in feat/base; resolve parent before syncing this subtree",
+    );
     expect(plan.blockedEntries[1]?.actions).not.toContain("push bookmark");
-    expect(plan.blockedEntries[1]?.actions).not.toContain(expect.stringContaining("create PR"));
+    expect(plan.blockedEntries[1]?.actions).not.toContain(
+      expect.stringContaining("create PR"),
+    );
   });
 
   it("does not recreate or mutate merged pull requests", () => {
@@ -1460,7 +1742,7 @@ describe("buildSyncPlanFromStatus", () => {
             description: "mh/open-questions",
             parentBookmarkName: undefined,
             branchName: "mh/open-questions",
-            isCurrent: false
+            isCurrent: false,
           },
           pullRequest: {
             number: 55,
@@ -1470,21 +1752,27 @@ describe("buildSyncPlanFromStatus", () => {
             baseRefName: "old-main",
             state: "MERGED",
             isDraft: false,
-            body: ""
+            body: "",
           },
           remoteBranchExists: true,
-          needsBookmarkPush: true
-        }
+          needsBookmarkPush: true,
+        },
       ],
-      "main"
+      "main",
     );
 
     expect(plan.completionState).toBe("stack-complete");
     expect(plan.githubActions).toEqual([]);
-    expect(plan.landedEntries[0]?.actions).toContain("PR #55 is merged; removed from active stack");
+    expect(plan.landedEntries[0]?.actions).toContain(
+      "PR #55 is merged; removed from active stack",
+    );
     expect(plan.landedEntries[0]?.actions).not.toContain("push bookmark");
-    expect(plan.landedEntries[0]?.actions).not.toContain(expect.stringContaining("create PR"));
-    expect(plan.landedEntries[0]?.actions).not.toContain(expect.stringContaining("retarget PR #55"));
+    expect(plan.landedEntries[0]?.actions).not.toContain(
+      expect.stringContaining("create PR"),
+    );
+    expect(plan.landedEntries[0]?.actions).not.toContain(
+      expect.stringContaining("retarget PR #55"),
+    );
   });
 
   it("retargets children of merged PRs to the nearest syncable base", () => {
@@ -1498,7 +1786,7 @@ describe("buildSyncPlanFromStatus", () => {
             description: "remove-refresh",
             parentBookmarkName: undefined,
             branchName: "remove-refresh",
-            isCurrent: false
+            isCurrent: false,
           },
           pullRequest: {
             number: 56,
@@ -1508,10 +1796,10 @@ describe("buildSyncPlanFromStatus", () => {
             baseRefName: "mh/open-questions",
             state: "MERGED",
             isDraft: false,
-            body: ""
+            body: "",
           },
           remoteBranchExists: true,
-          needsBookmarkPush: false
+          needsBookmarkPush: false,
         },
         {
           entry: {
@@ -1521,7 +1809,7 @@ describe("buildSyncPlanFromStatus", () => {
             description: "fix/create-next-copy",
             parentBookmarkName: "remove-refresh",
             branchName: "fix/create-next-copy",
-            isCurrent: true
+            isCurrent: true,
           },
           pullRequest: {
             number: 57,
@@ -1531,24 +1819,26 @@ describe("buildSyncPlanFromStatus", () => {
             baseRefName: "remove-refresh",
             state: "OPEN",
             isDraft: false,
-            body: ""
+            body: "",
           },
           remoteBranchExists: true,
-          needsBookmarkPush: false
-        }
+          needsBookmarkPush: false,
+        },
       ],
-      "main"
+      "main",
     );
 
     expect(plan.localActions).toEqual([
       "fetch origin",
       "move main to main@origin",
       "rebase fix/create-next-copy onto main",
-      "edit fix/create-next-copy"
+      "edit fix/create-next-copy",
     ]);
     expect(plan.githubActions).toHaveLength(1);
     expect(plan.githubActions[0]?.intendedBaseBranch).toBe("main");
-    expect(plan.githubActions[0]?.actions).toContain("retarget PR #57 base from remove-refresh to main");
+    expect(plan.githubActions[0]?.actions).toContain(
+      "retarget PR #57 base from remove-refresh to main",
+    );
   });
 
   it("keeps sibling branches based on their shared bookmarked parent instead of chaining them together", () => {
@@ -1562,7 +1852,7 @@ describe("buildSyncPlanFromStatus", () => {
             description: "mh/base",
             parentBookmarkName: undefined,
             branchName: "mh/base",
-            isCurrent: false
+            isCurrent: false,
           },
           pullRequest: {
             number: 28,
@@ -1571,10 +1861,10 @@ describe("buildSyncPlanFromStatus", () => {
             headRefName: "mh/base",
             baseRefName: "main",
             isDraft: false,
-            body: ""
+            body: "",
           },
           remoteBranchExists: true,
-          needsBookmarkPush: false
+          needsBookmarkPush: false,
         },
         {
           entry: {
@@ -1584,7 +1874,7 @@ describe("buildSyncPlanFromStatus", () => {
             description: "mh/alias",
             parentBookmarkName: "mh/base",
             branchName: "mh/alias",
-            isCurrent: false
+            isCurrent: false,
           },
           pullRequest: {
             number: 29,
@@ -1593,10 +1883,10 @@ describe("buildSyncPlanFromStatus", () => {
             headRefName: "mh/alias",
             baseRefName: "mh/base",
             isDraft: false,
-            body: ""
+            body: "",
           },
           remoteBranchExists: true,
-          needsBookmarkPush: false
+          needsBookmarkPush: false,
         },
         {
           entry: {
@@ -1606,7 +1896,7 @@ describe("buildSyncPlanFromStatus", () => {
             description: "mh/timing",
             parentBookmarkName: "mh/base",
             branchName: "mh/timing",
-            isCurrent: true
+            isCurrent: true,
           },
           pullRequest: {
             number: 30,
@@ -1615,18 +1905,20 @@ describe("buildSyncPlanFromStatus", () => {
             headRefName: "mh/timing",
             baseRefName: "mh/base",
             isDraft: false,
-            body: ""
+            body: "",
           },
           remoteBranchExists: true,
-          needsBookmarkPush: false
-        }
+          needsBookmarkPush: false,
+        },
       ],
-      "main"
+      "main",
     );
 
     expect(plan.githubActions[1]?.intendedBaseBranch).toBe("mh/base");
     expect(plan.githubActions[2]?.intendedBaseBranch).toBe("mh/base");
-    expect(plan.githubActions[2]?.actions).not.toContain(expect.stringContaining("retarget PR #30 base from mh/base to mh/alias"));
+    expect(plan.githubActions[2]?.actions).not.toContain(
+      expect.stringContaining("retarget PR #30 base from mh/base to mh/alias"),
+    );
   });
 });
 
@@ -1638,15 +1930,15 @@ describe("orderStackNodes", () => {
         changeId: "aaa111",
         commitId: "111aaa",
         description: "feat/base",
-        parentBookmarkName: undefined
+        parentBookmarkName: undefined,
       },
       {
         name: "feat/ui",
         changeId: "bbb222",
         commitId: "222bbb",
         description: "feat/ui",
-        parentBookmarkName: "feat/base"
-      }
+        parentBookmarkName: "feat/base",
+      },
     ];
 
     const ordered = orderStackNodes(allNodes, [allNodes[0]!]);
@@ -1661,15 +1953,15 @@ describe("orderStackNodes", () => {
         changeId: "aaa111",
         commitId: "111aaa",
         description: "feat/base",
-        parentBookmarkName: undefined
+        parentBookmarkName: undefined,
       },
       {
         name: "feat/ui",
         changeId: "bbb222",
         commitId: "222bbb",
         description: "feat/ui",
-        parentBookmarkName: "feat/base"
-      }
+        parentBookmarkName: "feat/base",
+      },
     ];
 
     const ordered = orderStackNodes(allNodes, allNodes);
@@ -1684,22 +1976,22 @@ describe("orderStackNodes", () => {
         changeId: "aaa111",
         commitId: "111aaa",
         description: "feat/base",
-        parentBookmarkName: undefined
+        parentBookmarkName: undefined,
       },
       {
         name: "feat/ui",
         changeId: "bbb222",
         commitId: "222bbb",
         description: "feat/ui",
-        parentBookmarkName: "feat/base"
+        parentBookmarkName: "feat/base",
       },
       {
         name: "feat/alt",
         changeId: "ccc333",
         commitId: "333ccc",
         description: "feat/alt",
-        parentBookmarkName: "feat/base"
-      }
+        parentBookmarkName: "feat/base",
+      },
     ];
 
     const ordered = orderStackNodes(allNodes, [allNodes[0]!]);
@@ -1718,7 +2010,7 @@ describe("selectCurrentBookmarkTree", () => {
         description: "feat/base",
         parentBookmarkName: undefined,
         branchName: "feat/base",
-        isCurrent: false
+        isCurrent: false,
       },
       {
         name: "feat/right",
@@ -1727,7 +2019,7 @@ describe("selectCurrentBookmarkTree", () => {
         description: "feat/right",
         parentBookmarkName: "feat/base",
         branchName: "feat/right",
-        isCurrent: true
+        isCurrent: true,
       },
       {
         name: "feat/left",
@@ -1736,7 +2028,7 @@ describe("selectCurrentBookmarkTree", () => {
         description: "feat/left",
         parentBookmarkName: "feat/base",
         branchName: "feat/left",
-        isCurrent: false
+        isCurrent: false,
       },
       {
         name: "other/root",
@@ -1745,13 +2037,17 @@ describe("selectCurrentBookmarkTree", () => {
         description: "other/root",
         parentBookmarkName: undefined,
         branchName: "other/root",
-        isCurrent: false
-      }
+        isCurrent: false,
+      },
     ];
 
     const selected = selectCurrentBookmarkTree(entries, "feat/right");
 
-    expect(selected.map((entry) => entry.name)).toEqual(["feat/base", "feat/right", "feat/left"]);
+    expect(selected.map((entry) => entry.name)).toEqual([
+      "feat/base",
+      "feat/right",
+      "feat/left",
+    ]);
   });
 });
 describe("renderStackComment", () => {
@@ -1766,21 +2062,23 @@ describe("renderStackComment", () => {
           headRefName: "feat/base",
           baseRefName: "main",
           isDraft: false,
-          body: ""
+          body: "",
         },
         remoteBranchExists: true,
-        needsBookmarkPush: false
+        needsBookmarkPush: false,
       },
       {
         entry: stack[1]!,
         pullRequest: null,
         remoteBranchExists: false,
-        needsBookmarkPush: true
-      }
+        needsBookmarkPush: true,
+      },
     ]);
 
     expect(comment).toContain(stackCommentMarker);
-    expect(comment).toContain("[#12](https://github.com/MH15/jjacks/pull/12) `feat/base`");
+    expect(comment).toContain(
+      "[#12](https://github.com/MH15/jjacks/pull/12) `feat/base`",
+    );
     expect(comment).toContain("**current** `feat/ui` -> pending PR");
   });
 
@@ -1796,10 +2094,10 @@ describe("renderStackComment", () => {
             headRefName: "feat/base",
             baseRefName: "main",
             isDraft: false,
-            body: ""
+            body: "",
           },
           remoteBranchExists: true,
-          needsBookmarkPush: false
+          needsBookmarkPush: false,
         },
         {
           entry: stack[1]!,
@@ -1810,85 +2108,95 @@ describe("renderStackComment", () => {
             headRefName: "feat/ui",
             baseRefName: "feat/base",
             isDraft: false,
-            body: ""
+            body: "",
           },
           remoteBranchExists: true,
-          needsBookmarkPush: false
-        }
+          needsBookmarkPush: false,
+        },
       ],
-      12
+      12,
     );
 
-    expect(comment).toContain("**current** [#12](https://github.com/MH15/jjacks/pull/12) `feat/base`");
-    expect(comment).toContain("[#13](https://github.com/MH15/jjacks/pull/13) `feat/ui`");
-    expect(comment).not.toContain("**current** [#13](https://github.com/MH15/jjacks/pull/13) `feat/ui`");
+    expect(comment).toContain(
+      "**current** [#12](https://github.com/MH15/jjacks/pull/12) `feat/base`",
+    );
+    expect(comment).toContain(
+      "[#13](https://github.com/MH15/jjacks/pull/13) `feat/ui`",
+    );
+    expect(comment).not.toContain(
+      "**current** [#13](https://github.com/MH15/jjacks/pull/13) `feat/ui`",
+    );
   });
 
   it("uses the actual current bookmark for preview comments when positioned mid-stack", () => {
-    const comment = renderStackComment(
-      [
-        {
-          entry: {
-            ...stack[0]!,
-            isCurrent: false
-          },
-          pullRequest: {
-            number: 12,
-            url: "https://github.com/MH15/jjacks/pull/12",
-            title: "feat/base",
-            headRefName: "feat/base",
-            baseRefName: "main",
-            isDraft: false,
-            body: ""
-          },
-          remoteBranchExists: true,
-          needsBookmarkPush: false
+    const comment = renderStackComment([
+      {
+        entry: {
+          ...stack[0]!,
+          isCurrent: false,
         },
-        {
-          entry: {
-            ...stack[1]!,
-            isCurrent: true
-          },
-          pullRequest: {
-            number: 13,
-            url: "https://github.com/MH15/jjacks/pull/13",
-            title: "feat/ui",
-            headRefName: "feat/ui",
-            baseRefName: "feat/base",
-            isDraft: false,
-            body: ""
-          },
-          remoteBranchExists: true,
-          needsBookmarkPush: false
+        pullRequest: {
+          number: 12,
+          url: "https://github.com/MH15/jjacks/pull/12",
+          title: "feat/base",
+          headRefName: "feat/base",
+          baseRefName: "main",
+          isDraft: false,
+          body: "",
         },
-        {
-          entry: {
-            name: "feat/api",
-            changeId: "ccc333",
-            commitId: "333ccc",
-            description: "feat/api",
-            parentBookmarkName: "feat/ui",
-            branchName: "feat/api",
-            isCurrent: false
-          },
-          pullRequest: {
-            number: 14,
-            url: "https://github.com/MH15/jjacks/pull/14",
-            title: "feat/api",
-            headRefName: "feat/api",
-            baseRefName: "feat/ui",
-            isDraft: false,
-            body: ""
-          },
-          remoteBranchExists: true,
-          needsBookmarkPush: false
-        }
-      ]
-    );
+        remoteBranchExists: true,
+        needsBookmarkPush: false,
+      },
+      {
+        entry: {
+          ...stack[1]!,
+          isCurrent: true,
+        },
+        pullRequest: {
+          number: 13,
+          url: "https://github.com/MH15/jjacks/pull/13",
+          title: "feat/ui",
+          headRefName: "feat/ui",
+          baseRefName: "feat/base",
+          isDraft: false,
+          body: "",
+        },
+        remoteBranchExists: true,
+        needsBookmarkPush: false,
+      },
+      {
+        entry: {
+          name: "feat/api",
+          changeId: "ccc333",
+          commitId: "333ccc",
+          description: "feat/api",
+          parentBookmarkName: "feat/ui",
+          branchName: "feat/api",
+          isCurrent: false,
+        },
+        pullRequest: {
+          number: 14,
+          url: "https://github.com/MH15/jjacks/pull/14",
+          title: "feat/api",
+          headRefName: "feat/api",
+          baseRefName: "feat/ui",
+          isDraft: false,
+          body: "",
+        },
+        remoteBranchExists: true,
+        needsBookmarkPush: false,
+      },
+    ]);
 
-    expect(comment).toContain("[#12](https://github.com/MH15/jjacks/pull/12) `feat/base`");
-    expect(comment).toContain("**current** [#13](https://github.com/MH15/jjacks/pull/13) `feat/ui`");
-    expect(comment).not.toContain("**current** [#14](https://github.com/MH15/jjacks/pull/14) `feat/api`");
+    expect(comment).toContain(
+      "[#12](https://github.com/MH15/jjacks/pull/12) `feat/base`",
+    );
+    expect(comment).toContain(
+      "**current** [#13](https://github.com/MH15/jjacks/pull/13) `feat/ui`",
+    );
+    expect(comment).not.toContain(
+      "**current** [#14](https://github.com/MH15/jjacks/pull/14) `feat/api`",
+    );
   });
 
   it("renders sibling branches as nested entries under their shared parent", () => {
@@ -1901,7 +2209,7 @@ describe("renderStackComment", () => {
           description: "mh/base",
           parentBookmarkName: undefined,
           branchName: "mh/base",
-          isCurrent: false
+          isCurrent: false,
         },
         pullRequest: {
           number: 28,
@@ -1910,10 +2218,10 @@ describe("renderStackComment", () => {
           headRefName: "mh/base",
           baseRefName: "main",
           isDraft: false,
-          body: ""
+          body: "",
         },
         remoteBranchExists: true,
-        needsBookmarkPush: false
+        needsBookmarkPush: false,
       },
       {
         entry: {
@@ -1923,7 +2231,7 @@ describe("renderStackComment", () => {
           description: "mh/alias",
           parentBookmarkName: "mh/base",
           branchName: "mh/alias",
-          isCurrent: false
+          isCurrent: false,
         },
         pullRequest: {
           number: 29,
@@ -1932,10 +2240,10 @@ describe("renderStackComment", () => {
           headRefName: "mh/alias",
           baseRefName: "mh/base",
           isDraft: false,
-          body: ""
+          body: "",
         },
         remoteBranchExists: true,
-        needsBookmarkPush: false
+        needsBookmarkPush: false,
       },
       {
         entry: {
@@ -1945,7 +2253,7 @@ describe("renderStackComment", () => {
           description: "mh/timing",
           parentBookmarkName: "mh/base",
           branchName: "mh/timing",
-          isCurrent: true
+          isCurrent: true,
         },
         pullRequest: {
           number: 30,
@@ -1954,26 +2262,31 @@ describe("renderStackComment", () => {
           headRefName: "mh/timing",
           baseRefName: "mh/base",
           isDraft: false,
-          body: ""
+          body: "",
         },
         remoteBranchExists: true,
-        needsBookmarkPush: false
-      }
+        needsBookmarkPush: false,
+      },
     ]);
 
-    expect(comment).toContain("[#28](https://github.com/MH15/jjacks/pull/28) `mh/base`");
-    expect(comment).toContain("  - [#29](https://github.com/MH15/jjacks/pull/29) `mh/alias`");
-    expect(comment).toContain("  - **current** [#30](https://github.com/MH15/jjacks/pull/30) `mh/timing`");
+    expect(comment).toContain(
+      "[#28](https://github.com/MH15/jjacks/pull/28) `mh/base`",
+    );
+    expect(comment).toContain(
+      "  - [#29](https://github.com/MH15/jjacks/pull/29) `mh/alias`",
+    );
+    expect(comment).toContain(
+      "  - **current** [#30](https://github.com/MH15/jjacks/pull/30) `mh/timing`",
+    );
   });
 });
 
 describe("upsertStackCommentInBody", () => {
   it("appends the stack block to an empty body", () => {
-    const body = upsertStackCommentInBody("", [
-      "<!-- jjacks:stack -->",
-      "hello",
-      "<!-- /jjacks:stack -->"
-    ].join("\n"));
+    const body = upsertStackCommentInBody(
+      "",
+      ["<!-- jjacks:stack -->", "hello", "<!-- /jjacks:stack -->"].join("\n"),
+    );
 
     expect(body).toContain("hello");
     expect(body.startsWith("<!-- jjacks:stack -->")).toBe(true);
@@ -1986,13 +2299,11 @@ describe("upsertStackCommentInBody", () => {
         "",
         "<!-- jjacks:stack -->",
         "old stack",
-        "<!-- /jjacks:stack -->"
+        "<!-- /jjacks:stack -->",
       ].join("\n"),
-      [
-        "<!-- jjacks:stack -->",
-        "new stack",
-        "<!-- /jjacks:stack -->"
-      ].join("\n")
+      ["<!-- jjacks:stack -->", "new stack", "<!-- /jjacks:stack -->"].join(
+        "\n",
+      ),
     );
 
     expect(body).toContain("Human description.");
