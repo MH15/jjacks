@@ -91,13 +91,38 @@ const run = async (
   });
 
 const fakeGhScript = `#!/usr/bin/env node
-import { readFileSync, writeFileSync } from "node:fs";
+import { closeSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 
 const statePath = process.env.JJACKS_FAKE_GH_STATE;
 if (statePath === undefined) {
   console.error("JJACKS_FAKE_GH_STATE is required");
   process.exit(1);
 }
+
+const lockPath = \`\${statePath}.lock\`;
+const acquireLock = () => {
+  const startedAt = Date.now();
+  while (true) {
+    try {
+      return openSync(lockPath, "wx");
+    } catch (error) {
+      if (Date.now() - startedAt > 5_000) {
+        throw error;
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
+};
+
+const lockFd = acquireLock();
+process.on("exit", () => {
+  try {
+    closeSync(lockFd);
+    unlinkSync(lockPath);
+  } catch {
+    // Best effort cleanup for the fake process lock.
+  }
+});
 
 const state = JSON.parse(readFileSync(statePath, "utf8"));
 state.pullRequests ??= [];

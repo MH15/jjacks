@@ -218,9 +218,7 @@ const refreshLocalStackWithInitialState = ({
     const analysis = analyzeReviewStack(entries, defaultBranch);
 
     if (analysis.completionState === "stack-complete") {
-      yield* jj.editWorkingCopyOnBookmark({
-        bookmarkName: defaultBranch,
-      });
+      yield* jj.moveToTrunkContinuation(defaultBranch);
     } else if (
       analysis.rootSyncableEntry !== undefined &&
       analysis.currentSyncableEntry !== undefined
