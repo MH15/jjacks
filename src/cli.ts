@@ -1,4 +1,4 @@
-import { Args, Command, Options } from "@effect/cli";
+import { Args, Command, Options, ValidationError } from "@effect/cli";
 import { NodeContext, NodeRuntime } from "@effect/platform-node";
 import { confirm, select } from "@inquirer/prompts";
 import chalk from "chalk";
@@ -465,6 +465,13 @@ const cli = Command.run(root, {
 });
 
 cli(process.argv).pipe(
+  Effect.catchIf(
+    ValidationError.isValidationError,
+    () =>
+      Effect.sync(() => {
+        process.exitCode = 1;
+      })
+  ),
   Effect.catchIf(
     (error): error is CliError => error instanceof CliError,
     (error) => Console.error(error.message)
