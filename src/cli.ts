@@ -7,11 +7,11 @@ import { Console, Effect, Layer, Option } from "effect";
 import { resolveDiffFormat } from "./diff";
 import { CliError } from "./errors";
 import { resolveBookmarkMovePlan } from "./navigation";
-import { buildSyncPlanFromStatus } from "./stack";
+import { analyzeReviewStack, buildSyncPlanFromStatus } from "./stack";
 import { resolveSyncMode } from "./sync-mode";
 import { renderDoctor, renderExecuteSummary, renderStatus, renderSyncPreview } from "./text";
 import { GitServiceLive } from "./services/GitService";
-import { GitHubServiceLive } from "./services/GitHubService";
+import { GitHubService, GitHubServiceLive } from "./services/GitHubService";
 import { JjService, JjServiceLive } from "./services/JjService";
 import { ProgressService, ProgressServiceLive, type ProgressServiceApi } from "./services/ProgressService";
 import { ProcessServiceLive } from "./services/ProcessService";
@@ -253,6 +253,18 @@ const promptForSyncConfirmation = Effect.tryPromise({
   catch: (error) => promptError("Sync confirmation", error)
 });
 
+const promptForMergeConfirmation = (pullRequestUrl: string) =>
+  Effect.tryPromise({
+    try: () =>
+      confirm({
+        message: `Merging the bottom PR in this stack: ${pullRequestUrl}`,
+        default: false
+      }, {
+        clearPromptOnDone: true
+      }),
+    catch: (error) => promptError("Merge confirmation", error)
+  });
+
 const syncStepTitles = {
   refresh: "Refresh local stack",
   descriptions: "Fill blank descriptions",
@@ -466,9 +478,41 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
   Command.withDescription("Preview and sync the current bookmark stack to GitHub pull requests and stack comments.")
 );
 
+const merge = Command.make("merge", {}, () =>
+  Effect.gen(function* () {
+    const stackService = yield* StackService;
+    const github = yield* GitHubService;
+    const prepared = yield* stackService.prepareSync;
+    const analysis = analyzeReviewStack(prepared.entries, prepared.defaultBranch);
+    const bottomEntry = analysis.syncableEntries[0];
+
+    if (bottomEntry === undefined) {
+      return yield* Effect.fail(
+        new CliError("No open PR found at the bottom of the active stack. Run `jjacks status` to inspect the stack.")
+      );
+    }
+
+    const pullRequest = bottomEntry.pullRequest;
+    if (pullRequest === null) {
+      return yield* Effect.fail(
+        new CliError(`Bottom stack bookmark ${bottomEntry.entry.name} has no pull request yet. Run "jjacks sync" first.`)
+      );
+    }
+
+    const confirmed = yield* promptForMergeConfirmation(pullRequest.url);
+    if (!confirmed) {
+      yield* Console.log("merge canceled");
+      return;
+    }
+
+    yield* github.mergePullRequestWhenReady(pullRequest.number);
+    yield* Console.log(`merge requested for PR #${pullRequest.number}`);
+  })
+).pipe(Command.withDescription("Merge, or enable auto-merge for, the bottom PR in the current stack."));
+
 const root = Command.make("jjacks", {}, () => Console.log("Use a subcommand."))
   .pipe(Command.withDescription("Sync the current jj bookmark stack to GitHub in a Graphite-like workflow."))
-  .pipe(Command.withSubcommands([doctor, status, create, up, u, down, d, log, diff, sync]));
+  .pipe(Command.withSubcommands([doctor, status, create, up, u, down, d, log, diff, sync, merge]));
 
 const cli = Command.run(root, {
   name: "jjacks",

@@ -166,6 +166,7 @@ const makeLayer = (options?: {
           }
         }
       }),
+    mergePullRequestWhenReady: () => Effect.void,
     listIssueComments: (pullRequestNumber: number) => Effect.succeed(issueComments.get(pullRequestNumber) ?? []),
     createIssueComment: ({ pullRequestNumber, body }) =>
       Effect.sync(() => {
@@ -305,6 +306,7 @@ describe("StackService with injected fakes", () => {
       findPullRequestByHead: () => Effect.die("findPullRequestByHead should not be used for an empty stack."),
       createPullRequest: () => Effect.die("createPullRequest should not be used for an empty stack."),
       updatePullRequest: () => Effect.void,
+      mergePullRequestWhenReady: () => Effect.void,
       listIssueComments: () => Effect.succeed([]),
       createIssueComment: () => Effect.void,
       updateIssueComment: () => Effect.void
@@ -392,6 +394,7 @@ describe("StackService with injected fakes", () => {
       findPullRequestByHead: () => Effect.die("findPullRequestByHead should not be used without an active stack."),
       createPullRequest: () => Effect.die("createPullRequest should not be used without an active stack."),
       updatePullRequest: () => Effect.void,
+      mergePullRequestWhenReady: () => Effect.void,
       listIssueComments: () => Effect.succeed([]),
       createIssueComment: () => Effect.void,
       updateIssueComment: () => Effect.void
@@ -501,6 +504,7 @@ describe("StackService with injected fakes", () => {
       findPullRequestByHead: () => Effect.die("findPullRequestByHead should not run in batch mode."),
       createPullRequest: () => Effect.die("createPullRequest should not run for a completed stack."),
       updatePullRequest: () => Effect.die("updatePullRequest should not run for a completed stack."),
+      mergePullRequestWhenReady: () => Effect.die("mergePullRequestWhenReady should not run for a completed stack."),
       listIssueComments: () => Effect.die("listIssueComments should not run for a completed stack."),
       createIssueComment: () => Effect.die("createIssueComment should not run for a completed stack."),
       updateIssueComment: () => Effect.die("updateIssueComment should not run for a completed stack.")
@@ -635,6 +639,7 @@ describe("StackService with injected fakes", () => {
             updatedBases.push(baseBranch);
           }
         }),
+      mergePullRequestWhenReady: () => Effect.void,
       listIssueComments: () => Effect.succeed([]),
       createIssueComment: () => Effect.void,
       updateIssueComment: () => Effect.void
@@ -766,6 +771,7 @@ describe("StackService with injected fakes", () => {
       findPullRequestByHead: () => Effect.succeed(null),
       createPullRequest: () => Effect.die("createPullRequest should not run during local refresh."),
       updatePullRequest: () => Effect.void,
+      mergePullRequestWhenReady: () => Effect.die("mergePullRequestWhenReady should not run during local refresh."),
       listIssueComments: () => Effect.succeed([]),
       createIssueComment: () => Effect.void,
       updateIssueComment: () => Effect.void
@@ -912,6 +918,7 @@ describe("StackService with injected fakes", () => {
           return created;
         }),
       updatePullRequest: () => Effect.void,
+      mergePullRequestWhenReady: () => Effect.void,
       listIssueComments: () => Effect.succeed([]),
       createIssueComment: () => Effect.void,
       updateIssueComment: () => Effect.void
@@ -1019,6 +1026,7 @@ describe("StackService with injected fakes", () => {
       findPullRequestByHead: () => Effect.succeed(null),
       createPullRequest: () => Effect.die("createPullRequest should not run without a published remote branch."),
       updatePullRequest: () => Effect.void,
+      mergePullRequestWhenReady: () => Effect.void,
       listIssueComments: () => Effect.succeed([]),
       createIssueComment: () => Effect.void,
       updateIssueComment: () => Effect.void
@@ -1130,6 +1138,7 @@ describe("StackService with injected fakes", () => {
           };
         }),
       updatePullRequest: () => Effect.void,
+      mergePullRequestWhenReady: () => Effect.void,
       listIssueComments: () => Effect.succeed([]),
       createIssueComment: () => Effect.void,
       updateIssueComment: () => Effect.void
