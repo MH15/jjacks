@@ -16,7 +16,7 @@ import { JjService, JjServiceLive } from "./services/JjService";
 import { ProgressService, ProgressServiceLive, type ProgressServiceApi } from "./services/ProgressService";
 import { ProcessServiceLive } from "./services/ProcessService";
 import { RepoServiceLive } from "./services/RepoService";
-import { StackService, StackServiceLive } from "./services/StackService";
+import { StackService, StackServiceLive, type PreparedSyncState } from "./services/StackService";
 
 const sharedLayer = Layer.mergeAll(
   ProcessServiceLive,
@@ -263,6 +263,33 @@ const syncStepTitles = {
 
 const pendingLabels = (labels: ReadonlyArray<string>, startIndex: number): ReadonlyArray<string> => labels.slice(startIndex + 1);
 
+const syncPlanStaleAfterMs = 5 * 60_000;
+
+const formatSyncPlanAge = (elapsedMs: number): string =>
+  elapsedMs < 1000 ? `${elapsedMs}ms` : `${(elapsedMs / 1000).toFixed(1)}s`;
+
+const ensureFreshSyncPlan = (prepared: PreparedSyncState): Effect.Effect<void, CliError> =>
+  Effect.gen(function* () {
+    const ageMs = Math.max(0, Date.now() - prepared.preparedAtMs);
+    if (ageMs <= syncPlanStaleAfterMs) {
+      return;
+    }
+
+    return yield* Effect.fail(
+      new CliError(
+        [
+          `Sync plan is stale (${formatSyncPlanAge(ageMs)} old; max ${formatSyncPlanAge(syncPlanStaleAfterMs)}).`,
+          `Rerun "jjacks sync" to build a fresh plan before mutating local state or GitHub.`
+        ].join("\n")
+      )
+    );
+  });
+
+const refreshLocalStack = (
+  stackService: typeof StackService.Service,
+  prepared: PreparedSyncState | undefined
+) => prepared === undefined ? stackService.refreshLocalStack : stackService.refreshLocalStackFromPrepared(prepared);
+
 const runStep = <A, E extends CliError, R>(
   progress: ProgressServiceApi,
   options: {
@@ -293,8 +320,12 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
     const progress = yield* ProgressService;
     const mode = resolveSyncMode({ execute, dryRun });
     const renderColored = mode === "confirm";
-    const runExecute = () =>
+    const runExecute = (preparedForReuse?: PreparedSyncState) =>
       Effect.gen(function* () {
+        if (preparedForReuse !== undefined) {
+          yield* ensureFreshSyncPlan(preparedForReuse);
+        }
+
         const labels = [
           syncStepTitles.refresh,
           syncStepTitles.descriptions,
@@ -317,7 +348,7 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
                 : `Refresh local stack (${plan.githubActions.length} active entr${plan.githubActions.length === 1 ? "y" : "ies"})`;
             }
           },
-          stackService.refreshLocalStack
+          refreshLocalStack(stackService, preparedForReuse)
         );
 
         const initialPlan = buildSyncPlanFromStatus(prepared.entries, prepared.defaultBranch);
@@ -429,7 +460,7 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
       return;
     }
 
-    yield* runExecute();
+    yield* runExecute(prepared);
   })
 ).pipe(
   Command.withDescription("Preview and sync the current bookmark stack to GitHub pull requests and stack comments.")
