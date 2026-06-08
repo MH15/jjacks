@@ -114,6 +114,11 @@ const makeLayer = (options?: {
     getCurrentStack: Effect.succeed(stack),
     getCurrentTree: Effect.succeed(stack),
     getTrackedBookmarks: Effect.succeed(stack),
+    getLocalBookmarkSnapshot: () => Effect.succeed(undefined),
+    getRemoteBookmarkSnapshot: () => Effect.succeed(undefined),
+    setBookmarkToRemote: () => Effect.void,
+    importRemoteBookmarkAsMutable: () => Effect.void,
+    trackRemoteBookmarkToLocal: () => Effect.void,
     ensureBookmarkDescription: (bookmarkName: string) =>
       Effect.sync(() => {
         describedBookmarks.push(bookmarkName);
@@ -132,6 +137,7 @@ const makeLayer = (options?: {
 
   const repoLayer = Layer.succeed(RepoService, {
     fetchOrigin: Effect.void,
+    findRemoteHead: () => Effect.succeed(undefined),
     getRepoInfo: Effect.succeed(repoInfo),
   });
 
@@ -310,6 +316,11 @@ describe("StackService with injected fakes", () => {
       getCurrentStack: Effect.succeed([]),
       getCurrentTree: Effect.succeed([]),
       getTrackedBookmarks: Effect.succeed([]),
+      getLocalBookmarkSnapshot: () => Effect.succeed(undefined),
+      getRemoteBookmarkSnapshot: () => Effect.succeed(undefined),
+      setBookmarkToRemote: () => Effect.void,
+      importRemoteBookmarkAsMutable: () => Effect.void,
+      trackRemoteBookmarkToLocal: () => Effect.void,
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
       moveToBookmark: () => Effect.succeed(""),
@@ -325,6 +336,7 @@ describe("StackService with injected fakes", () => {
 
     const repoLayer = Layer.succeed(RepoService, {
       fetchOrigin: Effect.void,
+      findRemoteHead: () => Effect.succeed(undefined),
       getRepoInfo: Effect.succeed(repoInfo),
     });
 
@@ -413,6 +425,11 @@ describe("StackService with injected fakes", () => {
       getCurrentStack: Effect.succeed([]),
       getCurrentTree: Effect.succeed([]),
       getTrackedBookmarks: Effect.succeed(trackedBookmarks),
+      getLocalBookmarkSnapshot: () => Effect.succeed(undefined),
+      getRemoteBookmarkSnapshot: () => Effect.succeed(undefined),
+      setBookmarkToRemote: () => Effect.void,
+      importRemoteBookmarkAsMutable: () => Effect.void,
+      trackRemoteBookmarkToLocal: () => Effect.void,
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
       moveToBookmark: () => Effect.succeed(""),
@@ -428,6 +445,7 @@ describe("StackService with injected fakes", () => {
 
     const repoLayer = Layer.succeed(RepoService, {
       fetchOrigin: Effect.void,
+      findRemoteHead: () => Effect.succeed(undefined),
       getRepoInfo: Effect.succeed(repoInfo),
     });
 
@@ -517,6 +535,11 @@ describe("StackService with injected fakes", () => {
       getCurrentStack: Effect.succeed(currentStack),
       getCurrentTree: Effect.succeed(currentStack),
       getTrackedBookmarks: Effect.succeed(currentStack),
+      getLocalBookmarkSnapshot: () => Effect.succeed(undefined),
+      getRemoteBookmarkSnapshot: () => Effect.succeed(undefined),
+      setBookmarkToRemote: () => Effect.void,
+      importRemoteBookmarkAsMutable: () => Effect.void,
+      trackRemoteBookmarkToLocal: () => Effect.void,
       ensureBookmarkDescription: () =>
         Effect.die("ensureBookmarkDescription should not run for a completed stack."),
       createBookmark: () => Effect.void,
@@ -539,6 +562,7 @@ describe("StackService with injected fakes", () => {
 
     const repoLayer = Layer.succeed(RepoService, {
       fetchOrigin: Effect.void,
+      findRemoteHead: () => Effect.succeed(undefined),
       getRepoInfo: Effect.succeed(repoInfo),
     });
 
@@ -656,6 +680,11 @@ describe("StackService with injected fakes", () => {
       getCurrentStack: Effect.succeed(currentStack),
       getCurrentTree: Effect.succeed(currentStack),
       getTrackedBookmarks: Effect.succeed(currentStack),
+      getLocalBookmarkSnapshot: () => Effect.succeed(undefined),
+      getRemoteBookmarkSnapshot: () => Effect.succeed(undefined),
+      setBookmarkToRemote: () => Effect.void,
+      importRemoteBookmarkAsMutable: () => Effect.void,
+      trackRemoteBookmarkToLocal: () => Effect.void,
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
       moveToBookmark: () => Effect.succeed(""),
@@ -680,6 +709,7 @@ describe("StackService with injected fakes", () => {
 
     const repoLayer = Layer.succeed(RepoService, {
       fetchOrigin: Effect.void,
+      findRemoteHead: () => Effect.succeed(undefined),
       getRepoInfo: Effect.succeed(repoInfo),
     });
 
@@ -836,6 +866,11 @@ describe("StackService with injected fakes", () => {
         return stack;
       }),
       getTrackedBookmarks: Effect.succeed(stack),
+      getLocalBookmarkSnapshot: () => Effect.succeed(undefined),
+      getRemoteBookmarkSnapshot: () => Effect.succeed(undefined),
+      setBookmarkToRemote: () => Effect.void,
+      importRemoteBookmarkAsMutable: () => Effect.void,
+      trackRemoteBookmarkToLocal: () => Effect.void,
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
       moveToBookmark: () => Effect.succeed(""),
@@ -860,6 +895,7 @@ describe("StackService with injected fakes", () => {
       fetchOrigin: Effect.sync(() => {
         events.push("fetch");
       }),
+      findRemoteHead: () => Effect.succeed(undefined),
       getRepoInfo: Effect.die("repo info should come from prepared sync state."),
     });
 
@@ -970,6 +1006,11 @@ describe("StackService with injected fakes", () => {
       getCurrentStack: Effect.sync(() => currentStack),
       getCurrentTree: Effect.sync(() => currentStack),
       getTrackedBookmarks: Effect.sync(() => currentStack),
+      getLocalBookmarkSnapshot: () => Effect.succeed(undefined),
+      getRemoteBookmarkSnapshot: () => Effect.succeed(undefined),
+      setBookmarkToRemote: () => Effect.void,
+      importRemoteBookmarkAsMutable: () => Effect.void,
+      trackRemoteBookmarkToLocal: () => Effect.void,
       ensureBookmarkDescription: (bookmarkName: string) =>
         Effect.sync(() => {
           describedBookmarks.push(bookmarkName);
@@ -991,6 +1032,7 @@ describe("StackService with injected fakes", () => {
 
     const repoLayer = Layer.succeed(RepoService, {
       fetchOrigin: Effect.void,
+      findRemoteHead: () => Effect.succeed(undefined),
       getRepoInfo: Effect.succeed(repoInfo),
     });
 
@@ -1129,6 +1171,11 @@ describe("StackService with injected fakes", () => {
           isCurrent: true,
         },
       ] satisfies ReadonlyArray<StackEntry>),
+      getLocalBookmarkSnapshot: () => Effect.succeed(undefined),
+      getRemoteBookmarkSnapshot: () => Effect.succeed(undefined),
+      setBookmarkToRemote: () => Effect.void,
+      importRemoteBookmarkAsMutable: () => Effect.void,
+      trackRemoteBookmarkToLocal: () => Effect.void,
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
       moveToBookmark: () => Effect.succeed(""),
@@ -1144,6 +1191,7 @@ describe("StackService with injected fakes", () => {
 
     const repoLayer = Layer.succeed(RepoService, {
       fetchOrigin: Effect.void,
+      findRemoteHead: () => Effect.succeed(undefined),
       getRepoInfo: Effect.succeed(repoInfo),
     });
 
@@ -1241,6 +1289,11 @@ describe("StackService with injected fakes", () => {
       getCurrentStack: Effect.succeed(emptyParentStack),
       getCurrentTree: Effect.succeed(emptyParentStack),
       getTrackedBookmarks: Effect.succeed(emptyParentStack),
+      getLocalBookmarkSnapshot: () => Effect.succeed(undefined),
+      getRemoteBookmarkSnapshot: () => Effect.succeed(undefined),
+      setBookmarkToRemote: () => Effect.void,
+      importRemoteBookmarkAsMutable: () => Effect.void,
+      trackRemoteBookmarkToLocal: () => Effect.void,
       ensureBookmarkDescription: () => Effect.void,
       createBookmark: () => Effect.void,
       moveToBookmark: () => Effect.succeed(""),
@@ -1256,6 +1309,7 @@ describe("StackService with injected fakes", () => {
 
     const repoLayer = Layer.succeed(RepoService, {
       fetchOrigin: Effect.void,
+      findRemoteHead: () => Effect.succeed(undefined),
       getRepoInfo: Effect.succeed(repoInfo),
     });
 

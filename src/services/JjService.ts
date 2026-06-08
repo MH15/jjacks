@@ -8,6 +8,7 @@ import {
   type StackEntry as StackEntryType,
 } from "../domain";
 import { CliError } from "../errors";
+import { deriveBranchName, type BookmarkSnapshot } from "../get";
 import { ProcessService } from "./ProcessService";
 
 export class JjService extends Context.Tag("JjService")<
@@ -30,6 +31,22 @@ export class JjService extends Context.Tag("JjService")<
       CliError,
       ProcessService
     >;
+    readonly getLocalBookmarkSnapshot: (
+      bookmarkName: string,
+    ) => Effect.Effect<BookmarkSnapshot | undefined, CliError, ProcessService>;
+    readonly getRemoteBookmarkSnapshot: (
+      bookmarkName: string,
+    ) => Effect.Effect<BookmarkSnapshot | undefined, CliError, ProcessService>;
+    readonly setBookmarkToRemote: (
+      bookmarkName: string,
+    ) => Effect.Effect<void, CliError, ProcessService>;
+    readonly importRemoteBookmarkAsMutable: (
+      bookmarkName: string,
+    ) => Effect.Effect<void, CliError, ProcessService>;
+    readonly trackRemoteBookmarkToLocal: (
+      bookmarkName: string,
+      localChangeId: string,
+    ) => Effect.Effect<void, CliError, ProcessService>;
     readonly ensureBookmarkDescription: (
       bookmarkName: string,
       description: string,
@@ -118,9 +135,6 @@ const getStackCommentLocation = Effect.gen(function* () {
     ),
   );
 });
-
-const deriveBranchName = (bookmarkName: string): string =>
-  bookmarkName.replace(/[^A-Za-z0-9/_-]+/g, "-");
 
 const ParsedStackNode = Schema.Struct({
   ...BookmarkNode.fields,
@@ -223,6 +237,9 @@ const parseDescendantLine = (line: string): DescendantNode | null => {
 
 const createBookmarkStateTemplate = `change_id.short() ++ "\t" ++ bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ description.first_line() ++ "\t" ++ "jjacks" ++ "\n"`;
 const trunkContinuationStateTemplate = `bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ parents.map(|p| p.bookmarks().map(|b| b.name()).join(",")).join("|") ++ "\t" ++ "jjacks" ++ "\n"`;
+const bookmarkSnapshotTemplate =
+  `change_id ++ "\t" ++ commit_id ++ "\t" ++ parents.map(|c| c.commit_id()).join(",") ++ "\t" ++ ` +
+  `hash(stringify(self.diff().summary())) ++ "\t" ++ description.first_line() ++ "\t" ++ "jjacks" ++ "\n"`;
 
 const parseCreateBookmarkStateLine = (line: string): WorkingCopyState | null => {
   if (line.length === 0) {
@@ -245,6 +262,70 @@ const parseCreateBookmarkStateLine = (line: string): WorkingCopyState | null => 
     description,
   });
 };
+
+const parseBookmarkSnapshotLine = (line: string): BookmarkSnapshot | undefined => {
+  const [changeId, commitId, parentCommitIds, diffHash, description, marker] = line.split("\t");
+  if (
+    changeId === undefined ||
+    commitId === undefined ||
+    parentCommitIds === undefined ||
+    diffHash === undefined ||
+    description === undefined ||
+    marker !== "jjacks"
+  ) {
+    return undefined;
+  }
+
+  return {
+    changeId,
+    commitId,
+    parentCommitIds:
+      parentCommitIds.length === 0
+        ? []
+        : parentCommitIds.split(",").filter((parentCommitId) => parentCommitId.length > 0),
+    diffHash,
+    description,
+  };
+};
+
+const getBookmarkSnapshot = (revset: string) =>
+  Effect.gen(function* () {
+    const process = yield* ProcessService;
+    yield* ensureAdvanceBookmarksEnabled;
+    const result = yield* process.run(
+      "jj",
+      ["log", "-r", revset, "-T", bookmarkSnapshotTemplate, "--no-graph"],
+      {
+        allowNonZeroExit: true,
+      },
+    );
+
+    if (result.exitCode !== 0) {
+      return undefined;
+    }
+
+    return parseBookmarkSnapshotLine(result.stdout);
+  });
+
+const parseDuplicatedChangeId = (stdout: string): string | undefined => {
+  const match = stdout.match(/\sas\s+([a-z0-9]+)/i);
+  return match?.[1];
+};
+
+const trackRemoteBookmarkToLocal = (bookmarkName: string, localChangeId: string) =>
+  Effect.gen(function* () {
+    const process = yield* ProcessService;
+    yield* ensureAdvanceBookmarksEnabled;
+    yield* process.run("jj", ["bookmark", "track", bookmarkName, "--remote", "origin"]);
+    yield* process.run("jj", [
+      "bookmark",
+      "set",
+      bookmarkName,
+      "-r",
+      localChangeId,
+      "--allow-backwards",
+    ]);
+  });
 
 const orderStackNodes = (
   allNodes: ReadonlyArray<BookmarkNodeType>,
@@ -540,6 +621,42 @@ const make = {
   getStackCommentLocation,
   getTrackedBookmarks,
   getCurrentTree,
+  getLocalBookmarkSnapshot: (bookmarkName: string) => getBookmarkSnapshot(bookmarkName),
+  getRemoteBookmarkSnapshot: (bookmarkName: string) =>
+    getBookmarkSnapshot(`${bookmarkName}@origin`),
+  setBookmarkToRemote: (bookmarkName: string) =>
+    Effect.gen(function* () {
+      const process = yield* ProcessService;
+      yield* ensureAdvanceBookmarksEnabled;
+      yield* process.run("jj", ["bookmark", "set", bookmarkName, "-r", `${bookmarkName}@origin`]);
+    }),
+  importRemoteBookmarkAsMutable: (bookmarkName: string) =>
+    Effect.gen(function* () {
+      const process = yield* ProcessService;
+      yield* ensureAdvanceBookmarksEnabled;
+      yield* process.run("jj", ["bookmark", "track", bookmarkName, "--remote", "origin"]);
+      const duplicate = yield* process.run("jj", ["duplicate", `${bookmarkName}@origin`]);
+      const duplicatedChangeId = parseDuplicatedChangeId(
+        [duplicate.stdout, duplicate.stderr].filter(Boolean).join("\n"),
+      );
+      if (duplicatedChangeId === undefined) {
+        return yield* Effect.fail(
+          new CliError(
+            `Failed to parse duplicated change id while importing ${bookmarkName}@origin.`,
+          ),
+        );
+      }
+
+      yield* process.run("jj", [
+        "bookmark",
+        "set",
+        bookmarkName,
+        "-r",
+        duplicatedChangeId,
+        "--allow-backwards",
+      ]);
+    }),
+  trackRemoteBookmarkToLocal,
 
   ensureBookmarkDescription: (bookmarkName: string, description: string) =>
     Effect.gen(function* () {
