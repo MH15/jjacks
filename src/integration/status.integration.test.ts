@@ -414,11 +414,17 @@ const updateOriginMain = async (
     readonly fileName: string;
     readonly content: string;
     readonly message: string;
+    readonly branchName?: string;
   },
 ): Promise<void> => {
+  const branchName = options.branchName ?? "main";
   const upstream = path.join(harness.root, "upstream");
   await run("git", ["clone", harness.origin, upstream], {
     cwd: harness.root,
+    env: harness.env,
+  });
+  await run("git", ["checkout", "-B", branchName, `origin/${branchName}`], {
+    cwd: upstream,
     env: harness.env,
   });
   await run("git", ["config", "user.name", "Integration Test"], {
@@ -432,7 +438,7 @@ const updateOriginMain = async (
   await writeFile(path.join(upstream, options.fileName), options.content);
   await run("git", ["add", options.fileName], { cwd: upstream, env: harness.env });
   await run("git", ["commit", "-m", options.message], { cwd: upstream, env: harness.env });
-  await run("git", ["push", "origin", "main"], { cwd: upstream, env: harness.env });
+  await run("git", ["push", "origin", `HEAD:${branchName}`], { cwd: upstream, env: harness.env });
 };
 
 afterEach(async () => {
@@ -561,7 +567,7 @@ describe("jjacks sync integration", () => {
     expect(state.comments?.[String(childPullRequest?.number)]?.[0]?.body).toContain("jjacks:stack");
   });
 
-  it("executes sync by updating stale PR metadata instead of creating duplicates", async () => {
+  it("executes sync by retargeting existing PRs without changing their title", async () => {
     const harness = await createHarness({
       pullRequests: [
         {
@@ -607,7 +613,7 @@ describe("jjacks sync integration", () => {
     const state = await readFakeGhState(harness);
     expect(state.pullRequests).toHaveLength(2);
     expect(state.pullRequests.find((pullRequest) => pullRequest.number === 13)).toMatchObject({
-      title: "feat/child",
+      title: "old title",
       baseRefName: "feat/base",
     });
   });

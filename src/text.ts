@@ -100,11 +100,7 @@ const formatAction = (action: string, color: boolean): string => {
     return chalk.green(`- ${action}`);
   }
 
-  if (
-    action.startsWith("set jj change description") ||
-    action.startsWith("rename PR") ||
-    action.startsWith("retarget PR")
-  ) {
+  if (action.startsWith("set jj change description") || action.startsWith("retarget PR")) {
     return chalk.yellow(`- ${action}`);
   }
 

@@ -169,14 +169,13 @@ const makeLayer = (options?: {
         createdPullRequests.push(headBranch);
         return created;
       }),
-    updatePullRequest: ({ number, baseBranch, title, body }) =>
+    updatePullRequest: ({ number, baseBranch, body }) =>
       Effect.sync(() => {
         for (const [headBranch, pr] of pullRequests.entries()) {
           if (pr.number === number) {
             pullRequests.set(headBranch, {
               ...pr,
               baseRefName: baseBranch ?? pr.baseRefName,
-              title: title ?? pr.title,
               body: body ?? pr.body,
             });
             updatedPullRequests.push(number);
@@ -960,7 +959,7 @@ describe("StackService with injected fakes", () => {
     expect(events).toEqual(["fetch", "move-main", "status", "edit-stack", "status"]);
   });
 
-  it("updates existing PR metadata instead of creating a duplicate", async () => {
+  it("retargets existing PRs without changing their title", async () => {
     const harness = makeLayer({
       initiallyPushed: ["feat/base", "feat/ui"],
       existingChildPr: {
@@ -981,7 +980,7 @@ describe("StackService with injected fakes", () => {
     expect(result.updatedPullRequestNumbers).toEqual([13]);
     expect(result.updatedCommentPullRequestNumbers).toEqual([12, 13]);
     expect(result.warnings).toEqual([]);
-    expect(result.statusEntries[1]?.pullRequest?.title).toBe("feat/ui");
+    expect(result.statusEntries[1]?.pullRequest?.title).toBe("old title");
     expect(result.statusEntries[1]?.pullRequest?.baseRefName).toBe("feat/base");
     expect(harness.describedBookmarks).toEqual([]);
   });
