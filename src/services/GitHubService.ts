@@ -27,7 +27,6 @@ export class GitHubService extends Context.Tag("GitHubService")<
     readonly updatePullRequest: (options: {
       readonly number: number;
       readonly baseBranch?: string;
-      readonly title?: string;
       readonly body?: string;
     }) => Effect.Effect<void, CliError, ProcessService>;
     readonly mergePullRequestWhenReady: (
@@ -242,12 +241,10 @@ const make = {
   updatePullRequest: ({
     number,
     baseBranch,
-    title,
     body,
   }: {
     readonly number: number;
     readonly baseBranch?: string;
-    readonly title?: string;
     readonly body?: string;
   }) =>
     Effect.gen(function* () {
@@ -255,10 +252,6 @@ const make = {
 
       if (baseBranch !== undefined) {
         args.push("--base", baseBranch);
-      }
-
-      if (title !== undefined) {
-        args.push("--title", title);
       }
 
       if (body !== undefined) {

@@ -178,9 +178,6 @@ const buildGithubPlanActions = (
     : []),
   ...(needsBookmarkPush ? ["push bookmark"] : []),
   ...(pullRequest === null ? [`create PR with base ${intendedBaseBranch}`] : []),
-  ...(pullRequest !== null && pullRequest.title !== entry.name
-    ? [`rename PR #${pullRequest.number} to "${entry.name}"`]
-    : []),
   ...(pullRequest !== null && pullRequest.baseRefName !== intendedBaseBranch
     ? [
         `retarget PR #${pullRequest.number} base from ${pullRequest.baseRefName} to ${intendedBaseBranch}`,

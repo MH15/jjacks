@@ -348,8 +348,6 @@ const reconcileSyncPullRequests = ({
             planEntry.pullRequest.baseRefName !== planEntry.intendedBaseBranch
               ? planEntry.intendedBaseBranch
               : undefined;
-          const nextTitle =
-            planEntry.pullRequest.title !== planEntry.entry.name ? planEntry.entry.name : undefined;
           const nextBody =
             stackCommentLocation === "description"
               ? upsertStackCommentInBody(
@@ -360,7 +358,6 @@ const reconcileSyncPullRequests = ({
 
           if (
             nextBase === undefined &&
-            nextTitle === undefined &&
             (nextBody === undefined || nextBody === planEntry.pullRequest.body)
           ) {
             return;
@@ -369,7 +366,6 @@ const reconcileSyncPullRequests = ({
           const updateOptions: {
             readonly number: number;
             readonly baseBranch?: string;
-            readonly title?: string;
             readonly body?: string;
           } = {
             number: planEntry.pullRequest.number,
@@ -377,10 +373,6 @@ const reconcileSyncPullRequests = ({
 
           if (nextBase !== undefined) {
             Object.assign(updateOptions, { baseBranch: nextBase });
-          }
-
-          if (nextTitle !== undefined) {
-            Object.assign(updateOptions, { title: nextTitle });
           }
 
           if (nextBody !== undefined && nextBody !== planEntry.pullRequest.body) {
