@@ -50,6 +50,7 @@ const makeLayer = (options?: {
   readonly existingChildPr?: {
     readonly title: string;
     readonly baseRefName: string;
+    readonly commitCount?: number;
   };
 }) => {
   const pushedBranches = new Set(options?.initiallyPushed ?? ["feat/base"]);
@@ -129,6 +130,8 @@ const makeLayer = (options?: {
     moveUp: Effect.succeed(""),
     moveDown: Effect.succeed(""),
     syncBookmarkToRemote: () => Effect.void,
+    countCommitsInRange: ({ headRevision }) =>
+      Effect.succeed(headRevision === "feat/ui" ? (options?.existingChildPr?.commitCount ?? 1) : 1),
     editWorkingCopyOnStack: () => Effect.succeed(""),
     editWorkingCopyOnBookmark: () => Effect.succeed(""),
     logBookmarks: () => Effect.succeed(""),
@@ -327,6 +330,8 @@ describe("StackService with injected fakes", () => {
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
+      countCommitsInRange: () =>
+        Effect.die("countCommitsInRange should not be used for an empty stack."),
       editWorkingCopyOnStack: () => Effect.succeed(""),
       editWorkingCopyOnBookmark: () => Effect.succeed(""),
       logBookmarks: () => Effect.die("logBookmarks should not be used in this test."),
@@ -436,6 +441,8 @@ describe("StackService with injected fakes", () => {
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
+      countCommitsInRange: () =>
+        Effect.die("countCommitsInRange should not be used without an active stack."),
       editWorkingCopyOnStack: () => Effect.succeed(""),
       editWorkingCopyOnBookmark: () => Effect.succeed(""),
       logBookmarks: () => Effect.die("logBookmarks should not be used in this test."),
@@ -551,6 +558,8 @@ describe("StackService with injected fakes", () => {
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
+      countCommitsInRange: () =>
+        Effect.die("countCommitsInRange should not run for a completed stack."),
       editWorkingCopyOnStack: () =>
         Effect.die("editWorkingCopyOnStack should not run for a completed stack."),
       editWorkingCopyOnBookmark: () =>
@@ -691,6 +700,7 @@ describe("StackService with injected fakes", () => {
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
+      countCommitsInRange: () => Effect.succeed(1),
       editWorkingCopyOnStack: ({ rootBookmarkName, currentBookmarkName, defaultBranch }) =>
         Effect.sync(() => {
           editStackCalls.push({
@@ -880,6 +890,7 @@ describe("StackService with injected fakes", () => {
         Effect.sync(() => {
           events.push("move-main");
         }),
+      countCommitsInRange: () => Effect.succeed(1),
       editWorkingCopyOnStack: () =>
         Effect.sync(() => {
           events.push("edit-stack");
@@ -985,6 +996,43 @@ describe("StackService with injected fakes", () => {
     expect(harness.describedBookmarks).toEqual([]);
   });
 
+  it("fails before pushing when a bookmark would publish multiple commits", async () => {
+    const harness = makeLayer({
+      initiallyPushed: ["feat/base"],
+      existingChildPr: {
+        title: "feat/ui",
+        baseRefName: "feat/base",
+        commitCount: 2,
+      },
+    });
+
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const stackService = yield* StackService;
+        return yield* stackService.executeSync;
+      }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(CliError);
+        expect(failure.value.message).toContain(
+          "Bookmark feat/ui would push 2 commits onto feat/base",
+        );
+        expect(failure.value.message).toContain("jjacks requires exactly one commit per PR");
+        expect(failure.value.message).toContain("jj squash -r <extra-change> --into <kept-change>");
+      }
+    }
+    expect(harness.pushedBookmarks).toEqual([]);
+    expect(harness.createdPullRequests).toEqual([]);
+    expect(harness.updatedPullRequests).toEqual([]);
+    expect(harness.updatedCommentPullRequests).toEqual([]);
+    expect(harness.describedBookmarks).toEqual([]);
+  });
+
   it("fills blank jj change descriptions from bookmark names before pushing", async () => {
     const describedBookmarks: Array<string> = [];
     let currentStack: ReadonlyArray<StackEntry> = [
@@ -1023,6 +1071,7 @@ describe("StackService with injected fakes", () => {
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
+      countCommitsInRange: () => Effect.succeed(1),
       editWorkingCopyOnStack: () => Effect.succeed(""),
       editWorkingCopyOnBookmark: () => Effect.succeed(""),
       logBookmarks: () => Effect.succeed(""),
@@ -1182,6 +1231,7 @@ describe("StackService with injected fakes", () => {
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
+      countCommitsInRange: () => Effect.succeed(1),
       editWorkingCopyOnStack: () => Effect.succeed(""),
       editWorkingCopyOnBookmark: () => Effect.succeed(""),
       logBookmarks: () => Effect.succeed(""),
@@ -1300,6 +1350,7 @@ describe("StackService with injected fakes", () => {
       moveUp: Effect.succeed(""),
       moveDown: Effect.succeed(""),
       syncBookmarkToRemote: () => Effect.void,
+      countCommitsInRange: () => Effect.succeed(1),
       editWorkingCopyOnStack: () => Effect.succeed(""),
       editWorkingCopyOnBookmark: () => Effect.succeed(""),
       logBookmarks: () => Effect.succeed(""),

@@ -67,7 +67,10 @@ export class StackService extends Context.Tag("StackService")<
       import("../errors").CliError,
       JjService | GitHubService | GitService | RepoService | ProcessService
     >;
-    readonly pushSyncBookmarks: (entries: ReadonlyArray<StackStatusEntry>) => Effect.Effect<
+    readonly pushSyncBookmarks: (options: {
+      readonly entries: ReadonlyArray<StackStatusEntry>;
+      readonly defaultBranch: string;
+    }) => Effect.Effect<
       {
         readonly entries: ReadonlyArray<StackStatusEntry>;
         readonly pushedBookmarks: ReadonlyArray<string>;
@@ -280,17 +283,78 @@ const ensureSyncDescriptions = (entries: ReadonlyArray<StackStatusEntry>) =>
     };
   });
 
-const pushSyncBookmarks = (entries: ReadonlyArray<StackStatusEntry>) =>
+const formatCommitCount = (count: number) => `${count} commit${count === 1 ? "" : "s"}`;
+
+const failMultiCommitPush = (
+  offenders: ReadonlyArray<{
+    readonly entry: ReturnType<typeof analyzeReviewStack>["syncableEntries"][number];
+    readonly commitCount: number;
+  }>,
+) => {
+  const first = offenders[0]!;
+  return Effect.fail(
+    new CliError(
+      [
+        offenders.length === 1
+          ? `Bookmark ${first.entry.entry.name} would push ${formatCommitCount(first.commitCount)} onto ${first.entry.intendedBaseBranch}, but jjacks requires exactly one commit per PR.`
+          : [
+              `These bookmarks would push more than one commit, but jjacks requires exactly one commit per PR:`,
+              ...offenders.map(
+                (offender) =>
+                  `- ${offender.entry.entry.name} onto ${offender.entry.intendedBaseBranch}: ${formatCommitCount(offender.commitCount)}`,
+              ),
+            ].join("\n"),
+        "",
+        `Squash each bookmark to one commit manually, then rerun "jjacks sync".`,
+        "",
+        "Useful commands:",
+        `  jj log -r '${first.entry.intendedBaseBranch}..${first.entry.entry.name}'`,
+        "  jj squash -r <extra-change> --into <kept-change>",
+        `  jjacks sync`,
+      ].join("\n"),
+    ),
+  );
+};
+
+const pushSyncBookmarks = ({
+  entries,
+  defaultBranch,
+}: {
+  readonly entries: ReadonlyArray<StackStatusEntry>;
+  readonly defaultBranch: string;
+}) =>
   Effect.gen(function* () {
     const git = yield* GitService;
-    const toPush = syncableEntries(entries)
-      .filter(
-        (entry) =>
-          entry.needsBookmarkPush &&
-          !(entry.entry.isEmpty === true && entry.pullRequest === null) &&
-          (entry.pullRequest === null || isPullRequestOpen(entry.pullRequest)),
-      )
-      .map((entry) => entry.entry.name);
+    const jj = yield* JjService;
+    const entriesToPush = analyzeReviewStack(entries, defaultBranch).syncableEntries.filter(
+      (entry) =>
+        entry.needsBookmarkPush &&
+        !(entry.entry.isEmpty === true && entry.pullRequest === null) &&
+        (entry.pullRequest === null || isPullRequestOpen(entry.pullRequest)),
+    );
+    const toPush = entriesToPush.map((entry) => entry.entry.name);
+
+    const offenders = (yield* Effect.forEach(
+      entriesToPush,
+      (entry) =>
+        Effect.gen(function* () {
+          const commitCount = yield* jj.countCommitsInRange({
+            baseRevision: entry.intendedBaseBranch,
+            headRevision: entry.entry.name,
+          });
+          return commitCount === 1
+            ? null
+            : {
+                entry,
+                commitCount,
+              };
+        }),
+      { concurrency: 4 },
+    )).filter((offender): offender is NonNullable<typeof offender> => offender !== null);
+
+    if (offenders.length > 0) {
+      return yield* failMultiCommitPush(offenders);
+    }
 
     yield* git.pushBookmarks(toPush);
 
@@ -506,7 +570,10 @@ const executeSync = Effect.gen(function* () {
   }
 
   const descriptions = yield* ensureSyncDescriptions(entries);
-  const pushes = yield* pushSyncBookmarks(descriptions.entries);
+  const pushes = yield* pushSyncBookmarks({
+    entries: descriptions.entries,
+    defaultBranch: prepared.defaultBranch,
+  });
   const prs = yield* reconcileSyncPullRequests({
     entries: pushes.entries,
     defaultBranch: prepared.defaultBranch,

@@ -618,6 +618,65 @@ describe("jjacks sync integration", () => {
     });
   });
 
+  it("fails execute sync before pushing a bookmark that would publish multiple commits", async () => {
+    const harness = await createHarness({
+      pullRequests: [
+        {
+          number: 12,
+          url: "https://github.com/MH15/jjacks/pull/12",
+          title: "feat/base",
+          headRefName: "feat/base",
+          headRepositoryOwner: "coworker",
+          baseRefName: "main",
+          state: "OPEN",
+          isDraft: false,
+          body: "",
+        },
+        {
+          number: 13,
+          url: "https://github.com/MH15/jjacks/pull/13",
+          title: "feat/child",
+          headRefName: "feat/child",
+          headRepositoryOwner: "coworker",
+          baseRefName: "feat/base",
+          state: "OPEN",
+          isDraft: false,
+          body: "",
+        },
+      ],
+    });
+    await initializeRepo(harness, { childBookmark: "feat/child" });
+    await run("jj", ["new", "-m", "second child commit"], {
+      cwd: harness.repo,
+      env: harness.env,
+    });
+    await writeFile(path.join(harness.repo, "second.txt"), "second\n");
+    await run("jj", ["bookmark", "set", "feat/child", "-r", "@"], {
+      cwd: harness.repo,
+      env: harness.env,
+    });
+
+    const result = await run(
+      "node",
+      [path.join(process.cwd(), "dist/cli.js"), "sync", "--execute"],
+      {
+        cwd: harness.repo,
+        env: harness.env,
+        allowFailure: true,
+      },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Bookmark feat/child would push 2 commits onto feat/base");
+    expect(result.stderr).toContain("jjacks requires exactly one commit per PR");
+    expect(result.stderr).toContain("jj squash -r <extra-change> --into <kept-change>");
+    expect(result.stderr).not.toContain("Unexpected fake gh call");
+
+    const state = await readFakeGhState(harness);
+    expect(state.pullRequests).toHaveLength(2);
+    expect(state.comments).toEqual({});
+  });
+
   it("executes sync by updating existing stack comments instead of creating duplicates", async () => {
     const harness = await createHarness({
       pullRequests: [
