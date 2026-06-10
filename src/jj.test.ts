@@ -65,6 +65,42 @@ describe("JjService.editWorkingCopyOnStack", () => {
   });
 });
 
+describe("JjService.countCommitsInRange", () => {
+  it("counts local commits in the jj revset between a base and bookmark", async () => {
+    const calls: Array<ReadonlyArray<string>> = [];
+    const processLayer = makeProcessLayer((_command, args) => {
+      calls.push(args);
+
+      if (args[0] === "config") {
+        return { stdout: "true", stderr: "", exitCode: 0 };
+      }
+
+      if (args[0] === "log") {
+        return {
+          stdout: "commit1\ncommit2\n",
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    const count = await Effect.runPromise(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        return yield* jjService.countCommitsInRange({
+          baseRevision: "feat/base",
+          headRevision: "feat/ui",
+        });
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive))),
+    );
+
+    expect(count).toBe(2);
+    expect(calls.some((args) => args[0] === "log" && args[2] === "feat/base..feat/ui")).toBe(true);
+  });
+});
+
 describe("JjService.getLocalBookmarkSnapshot", () => {
   it("returns bookmark commit metadata when the bookmark exists", async () => {
     const processLayer = makeProcessLayer((_command, args) => {

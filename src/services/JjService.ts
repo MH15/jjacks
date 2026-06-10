@@ -66,6 +66,10 @@ export class JjService extends Context.Tag("JjService")<
     readonly syncBookmarkToRemote: (
       bookmarkName: string,
     ) => Effect.Effect<void, CliError, ProcessService>;
+    readonly countCommitsInRange: (options: {
+      readonly baseRevision: string;
+      readonly headRevision: string;
+    }) => Effect.Effect<number, CliError, ProcessService>;
     readonly editWorkingCopyOnStack: (options: {
       readonly rootBookmarkName: string;
       readonly currentBookmarkName: string;
@@ -751,6 +755,26 @@ const make = {
       const process = yield* ProcessService;
       yield* ensureAdvanceBookmarksEnabled;
       yield* process.run("jj", ["bookmark", "set", bookmarkName, "-r", `${bookmarkName}@origin`]);
+    }),
+  countCommitsInRange: ({
+    baseRevision,
+    headRevision,
+  }: {
+    readonly baseRevision: string;
+    readonly headRevision: string;
+  }) =>
+    Effect.gen(function* () {
+      const process = yield* ProcessService;
+      yield* ensureAdvanceBookmarksEnabled;
+      const result = yield* process.run("jj", [
+        "log",
+        "-r",
+        `${baseRevision}..${headRevision}`,
+        "-T",
+        `commit_id ++ "\n"`,
+        "--no-graph",
+      ]);
+      return result.stdout.split("\n").filter((line) => line.length > 0).length;
     }),
 
   editWorkingCopyOnStack: ({

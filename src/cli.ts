@@ -553,7 +553,10 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
                 ? `${syncStepTitles.pushes} (none needed)`
                 : `${syncStepTitles.pushes} (${pushedBookmarks.length})`,
           },
-          stackService.pushSyncBookmarks(descriptions.entries),
+          stackService.pushSyncBookmarks({
+            entries: descriptions.entries,
+            defaultBranch: prepared.defaultBranch,
+          }),
         );
 
         const prs = yield* runStep(
