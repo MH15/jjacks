@@ -264,10 +264,12 @@ const stat = Options.boolean("stat").pipe(
 const diff = Command.make("diff", { against, summary, stat }, ({ against, summary, stat }) =>
   Effect.gen(function* () {
     const jjService = yield* JjService;
+    const repo = yield* RepoService;
+    const repoInfo = yield* repo.getRepoInfo;
     const format = resolveDiffFormat({ summary, stat });
     const againstRevset = Option.getOrUndefined(against);
     const output = yield* jjService.diffCurrentStack({
-      defaultBranch: "main",
+      defaultBranch: repoInfo.defaultBranch ?? "main",
       ...(againstRevset === undefined ? {} : { against: againstRevset }),
       format,
     });

@@ -258,6 +258,7 @@ process.exit(1);
 const createHarness = async (options?: {
   readonly pullRequests?: ReadonlyArray<FakePullRequest>;
   readonly comments?: Record<string, ReadonlyArray<FakePullRequestComment>>;
+  readonly stackCommentLocation?: "comment" | "description";
 }): Promise<IntegrationHarness> => {
   const root = await mkdtemp(path.join(os.tmpdir(), "jjacks-integration-"));
   const repo = path.join(root, "repo");
@@ -276,6 +277,9 @@ const createHarness = async (options?: {
     jjConfigPath,
     [
       "advance-bookmarks.enabled = true",
+      ...(options?.stackCommentLocation === undefined
+        ? []
+        : ["[jjacks.stack_comments]", `location = "${options.stackCommentLocation}"`, ""]),
       "[user]",
       'name = "Integration Test"',
       'email = "integration@example.com"',
@@ -336,9 +340,14 @@ const initializeRepo = async (
   harness: IntegrationHarness,
   options?: {
     readonly childBookmark?: string;
+    readonly defaultBranch?: string;
   },
 ): Promise<void> => {
-  await run("git", ["init", "--initial-branch", "main"], { cwd: harness.repo, env: harness.env });
+  const defaultBranch = options?.defaultBranch ?? "main";
+  await run("git", ["init", "--initial-branch", defaultBranch], {
+    cwd: harness.repo,
+    env: harness.env,
+  });
   await run("git", ["config", "user.name", "Integration Test"], {
     cwd: harness.repo,
     env: harness.env,
@@ -355,8 +364,11 @@ const initializeRepo = async (
     cwd: harness.repo,
     env: harness.env,
   });
-  await run("git", ["push", "-u", "origin", "main"], { cwd: harness.repo, env: harness.env });
-  await run("git", ["remote", "set-head", "origin", "main"], {
+  await run("git", ["push", "-u", "origin", defaultBranch], {
+    cwd: harness.repo,
+    env: harness.env,
+  });
+  await run("git", ["remote", "set-head", "origin", defaultBranch], {
     cwd: harness.repo,
     env: harness.env,
   });
@@ -375,6 +387,52 @@ const initializeRepo = async (
       env: harness.env,
     });
   }
+};
+
+const createSiblingBookmark = async (
+  harness: IntegrationHarness,
+  options: {
+    readonly bookmarkName: string;
+    readonly fileName: string;
+    readonly content: string;
+  },
+): Promise<void> => {
+  await run("jj", ["new", "feat/base", "-m", options.bookmarkName], {
+    cwd: harness.repo,
+    env: harness.env,
+  });
+  await writeFile(path.join(harness.repo, options.fileName), options.content);
+  await run("jj", ["bookmark", "create", options.bookmarkName], {
+    cwd: harness.repo,
+    env: harness.env,
+  });
+};
+
+const updateOriginMain = async (
+  harness: IntegrationHarness,
+  options: {
+    readonly fileName: string;
+    readonly content: string;
+    readonly message: string;
+  },
+): Promise<void> => {
+  const upstream = path.join(harness.root, "upstream");
+  await run("git", ["clone", harness.origin, upstream], {
+    cwd: harness.root,
+    env: harness.env,
+  });
+  await run("git", ["config", "user.name", "Integration Test"], {
+    cwd: upstream,
+    env: harness.env,
+  });
+  await run("git", ["config", "user.email", "integration@example.com"], {
+    cwd: upstream,
+    env: harness.env,
+  });
+  await writeFile(path.join(upstream, options.fileName), options.content);
+  await run("git", ["add", options.fileName], { cwd: upstream, env: harness.env });
+  await run("git", ["commit", "-m", options.message], { cwd: upstream, env: harness.env });
+  await run("git", ["push", "origin", "main"], { cwd: upstream, env: harness.env });
 };
 
 afterEach(async () => {
@@ -553,6 +611,293 @@ describe("jjacks sync integration", () => {
       baseRefName: "feat/base",
     });
   });
+
+  it("executes sync by updating existing stack comments instead of creating duplicates", async () => {
+    const harness = await createHarness({
+      pullRequests: [
+        {
+          number: 12,
+          url: "https://github.com/MH15/jjacks/pull/12",
+          title: "feat/base",
+          headRefName: "feat/base",
+          headRepositoryOwner: "coworker",
+          baseRefName: "main",
+          state: "OPEN",
+          isDraft: false,
+          body: "",
+        },
+        {
+          number: 13,
+          url: "https://github.com/MH15/jjacks/pull/13",
+          title: "feat/child",
+          headRefName: "feat/child",
+          headRepositoryOwner: "coworker",
+          baseRefName: "feat/base",
+          state: "OPEN",
+          isDraft: false,
+          body: "",
+        },
+      ],
+      comments: {
+        "12": [
+          {
+            id: 1001,
+            body: ["<!-- jjacks:stack -->", "old base stack", "<!-- /jjacks:stack -->"].join("\n"),
+            url: "https://github.com/MH15/jjacks/pull/12#issuecomment-1001",
+          },
+        ],
+        "13": [
+          {
+            id: 1002,
+            body: ["<!-- jjacks:stack -->", "old child stack", "<!-- /jjacks:stack -->"].join("\n"),
+            url: "https://github.com/MH15/jjacks/pull/13#issuecomment-1002",
+          },
+        ],
+      },
+    });
+    await initializeRepo(harness, { childBookmark: "feat/child" });
+
+    const result = await run(
+      "node",
+      [path.join(process.cwd(), "dist/cli.js"), "sync", "--execute"],
+      {
+        cwd: harness.repo,
+        env: harness.env,
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain("Sync stack comments");
+    expect(result.stderr).not.toContain("Unexpected fake gh call");
+    expect(result.stdout).toContain("2 pushes, no PRs, 2 comments");
+
+    const state = await readFakeGhState(harness);
+    expect(state.comments?.["12"]).toHaveLength(1);
+    expect(state.comments?.["13"]).toHaveLength(1);
+    expect(state.comments?.["12"]?.[0]).toMatchObject({ id: 1001 });
+    expect(state.comments?.["13"]?.[0]).toMatchObject({ id: 1002 });
+    expect(state.comments?.["12"]?.[0]?.body).toContain("feat/child");
+    expect(state.comments?.["13"]?.[0]?.body).toContain("feat/base");
+    expect(state.comments?.["12"]?.[0]?.body).not.toContain("old base stack");
+    expect(state.comments?.["13"]?.[0]?.body).not.toContain("old child stack");
+  });
+
+  it("executes sync by writing stack breadcrumbs into PR descriptions when configured", async () => {
+    const existingBody = [
+      "Human description.",
+      "",
+      "<!-- jjacks:stack -->",
+      "old stack",
+      "<!-- /jjacks:stack -->",
+    ].join("\n");
+    const harness = await createHarness({
+      stackCommentLocation: "description",
+      pullRequests: [
+        {
+          number: 12,
+          url: "https://github.com/MH15/jjacks/pull/12",
+          title: "feat/base",
+          headRefName: "feat/base",
+          headRepositoryOwner: "coworker",
+          baseRefName: "main",
+          state: "OPEN",
+          isDraft: false,
+          body: existingBody,
+        },
+        {
+          number: 13,
+          url: "https://github.com/MH15/jjacks/pull/13",
+          title: "feat/child",
+          headRefName: "feat/child",
+          headRepositoryOwner: "coworker",
+          baseRefName: "feat/base",
+          state: "OPEN",
+          isDraft: false,
+          body: existingBody,
+        },
+      ],
+    });
+    await initializeRepo(harness, { childBookmark: "feat/child" });
+
+    const result = await run(
+      "node",
+      [path.join(process.cwd(), "dist/cli.js"), "sync", "--execute"],
+      {
+        cwd: harness.repo,
+        env: harness.env,
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain("Sync stack comments");
+    expect(result.stderr).not.toContain("Unexpected fake gh call");
+    expect(result.stdout).toContain("2 pushes, 2 PRs, no comments");
+
+    const state = await readFakeGhState(harness);
+    expect(state.comments).toEqual({});
+    for (const pullRequest of state.pullRequests) {
+      expect(pullRequest.body).toContain("Human description.");
+      expect(pullRequest.body).toContain("<!-- jjacks:stack -->");
+      expect(pullRequest.body).toContain("feat/base");
+      expect(pullRequest.body).toContain("feat/child");
+      expect(pullRequest.body).not.toContain("old stack");
+    }
+  });
+
+  it("executes sync by retargeting a surviving child after the lower PR merged", async () => {
+    const harness = await createHarness({
+      pullRequests: [
+        {
+          number: 12,
+          url: "https://github.com/MH15/jjacks/pull/12",
+          title: "feat/base",
+          headRefName: "feat/base",
+          headRepositoryOwner: "coworker",
+          baseRefName: "main",
+          state: "MERGED",
+          isDraft: false,
+          body: "",
+        },
+        {
+          number: 13,
+          url: "https://github.com/MH15/jjacks/pull/13",
+          title: "feat/child",
+          headRefName: "feat/child",
+          headRepositoryOwner: "coworker",
+          baseRefName: "feat/base",
+          state: "OPEN",
+          isDraft: false,
+          body: "",
+        },
+      ],
+    });
+    await initializeRepo(harness, { childBookmark: "feat/child" });
+
+    const result = await run(
+      "node",
+      [path.join(process.cwd(), "dist/cli.js"), "sync", "--execute"],
+      {
+        cwd: harness.repo,
+        env: harness.env,
+        allowFailure: true,
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toContain("Unexpected fake gh call");
+    expect(result.stdout).toContain("1 push, 1 PR, 1 comment");
+
+    const state = await readFakeGhState(harness);
+    expect(state.pullRequests.find((pullRequest) => pullRequest.number === 13)).toMatchObject({
+      baseRefName: "main",
+      title: "feat/child",
+    });
+    expect(state.comments?.["12"]).toBeUndefined();
+    expect(state.comments?.["13"]?.[0]?.body).toContain("feat/child");
+  });
+
+  it("keeps a clean sibling syncable when another sibling conflicts after refreshing main", async () => {
+    const harness = await createHarness({
+      pullRequests: [
+        {
+          number: 12,
+          url: "https://github.com/MH15/jjacks/pull/12",
+          title: "feat/base",
+          headRefName: "feat/base",
+          headRepositoryOwner: "coworker",
+          baseRefName: "main",
+          state: "OPEN",
+          isDraft: false,
+          body: "",
+        },
+        {
+          number: 13,
+          url: "https://github.com/MH15/jjacks/pull/13",
+          title: "feat/conflict",
+          headRefName: "feat/conflict",
+          headRepositoryOwner: "coworker",
+          baseRefName: "feat/base",
+          state: "OPEN",
+          isDraft: false,
+          body: "",
+        },
+        {
+          number: 14,
+          url: "https://github.com/MH15/jjacks/pull/14",
+          title: "feat/clean",
+          headRefName: "feat/clean",
+          headRepositoryOwner: "coworker",
+          baseRefName: "feat/base",
+          state: "OPEN",
+          isDraft: false,
+          body: "",
+        },
+      ],
+    });
+    await initializeRepo(harness);
+    await writeFile(path.join(harness.repo, "base.txt"), "base\n");
+    await createSiblingBookmark(harness, {
+      bookmarkName: "feat/conflict",
+      fileName: "README.md",
+      content: "conflict\n",
+    });
+    await createSiblingBookmark(harness, {
+      bookmarkName: "feat/clean",
+      fileName: "clean.txt",
+      content: "clean\n",
+    });
+    await updateOriginMain(harness, {
+      fileName: "README.md",
+      content: "remote\n",
+      message: "update main readme",
+    });
+
+    const result = await run(
+      "node",
+      [path.join(process.cwd(), "dist/cli.js"), "sync", "--execute"],
+      {
+        cwd: harness.repo,
+        env: harness.env,
+        allowFailure: true,
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toContain("Unexpected fake gh call");
+    expect(result.stdout).toContain("2 pushes, no PRs, 2 comments");
+
+    const state = await readFakeGhState(harness);
+    expect(state.comments?.["12"]?.[0]?.body).toContain("feat/base");
+    expect(state.comments?.["14"]?.[0]?.body).toContain("feat/clean");
+    expect(state.comments?.["13"]).toBeUndefined();
+  });
+});
+
+describe("jjacks diff integration", () => {
+  it("diffs a single-bookmark stack against the repo default branch when it is not main", async () => {
+    const harness = await createHarness();
+    await initializeRepo(harness, { defaultBranch: "trunk" });
+
+    const result = await run(
+      "node",
+      [path.join(process.cwd(), "dist/cli.js"), "diff", "--summary"],
+      {
+        cwd: harness.repo,
+        env: harness.env,
+        allowFailure: true,
+      },
+    );
+
+    expect({
+      exitCode: result.exitCode,
+      stderr: result.stderr,
+      stdout: result.stdout,
+    }).toEqual({
+      exitCode: 0,
+      stderr: "",
+      stdout: expect.any(String),
+    });
+  });
 });
 
 describe("jjacks navigation integration", () => {
@@ -577,5 +922,32 @@ describe("jjacks navigation integration", () => {
     expect(up.exitCode).toBe(0);
     expect(up.stdout).toContain("jjacks up");
     expect(up.stdout).toContain("feat/child");
+  });
+
+  it("fails clearly instead of guessing when moving up from a multi-child bookmark noninteractively", async () => {
+    const harness = await createHarness();
+    await initializeRepo(harness, { childBookmark: "feat/child" });
+    await createSiblingBookmark(harness, {
+      bookmarkName: "feat/other",
+      fileName: "other.txt",
+      content: "other\n",
+    });
+
+    const down = await run("node", [path.join(process.cwd(), "dist/cli.js"), "down"], {
+      cwd: harness.repo,
+      env: harness.env,
+    });
+    expect(down.exitCode).toBe(0);
+
+    const up = await run("node", [path.join(process.cwd(), "dist/cli.js"), "up"], {
+      cwd: harness.repo,
+      env: harness.env,
+      allowFailure: true,
+    });
+
+    expect(up.exitCode).toBe(1);
+    expect(up.stderr).toContain(
+      "Moving up from feat/base requires an interactive terminal so you can choose from multiple child bookmarks.",
+    );
   });
 });
