@@ -2,6 +2,7 @@ import { execFile as execFileCallback } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -335,6 +336,95 @@ const createHarness = async (options?: {
 
 const readFakeGhState = async (harness: IntegrationHarness): Promise<FakeGhState> =>
   JSON.parse(await readFile(harness.fakeGhStatePath, "utf8"));
+
+const findExecutable = async (
+  executable: string,
+  options: {
+    readonly cwd: string;
+    readonly env: NodeJS.ProcessEnv;
+  },
+): Promise<string> => {
+  const result = await run("which", [executable], {
+    cwd: options.cwd,
+    env: options.env,
+  });
+  return result.stdout.trim();
+};
+
+const fakeJjTraceScript = `#!/usr/bin/env node
+import { spawnSync } from "node:child_process";
+import { appendFileSync } from "node:fs";
+
+const realJj = process.env.JJACKS_REAL_JJ;
+const tracePath = process.env.JJACKS_FAKE_JJ_TRACE;
+const args = process.argv.slice(2);
+
+if (realJj === undefined || tracePath === undefined) {
+  console.error("JJACKS_REAL_JJ and JJACKS_FAKE_JJ_TRACE are required");
+  process.exit(1);
+}
+
+appendFileSync(tracePath, JSON.stringify(args) + "\\n");
+
+const delayMs = Number(process.env.JJACKS_FAKE_JJ_DELAY_BROAD_LOG_MS ?? "0");
+if (
+  delayMs > 0 &&
+  args[0] === "log" &&
+  args[1] === "-r" &&
+  args[2] === "bookmarks() & ~::trunk()"
+) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+}
+
+const result = spawnSync(realJj, args, {
+  cwd: process.cwd(),
+  env: process.env,
+  stdio: "inherit",
+});
+
+if (result.error !== undefined) {
+  console.error(result.error.message);
+  process.exit(1);
+}
+
+process.exit(result.status ?? 1);
+`;
+
+const installTracingJj = async (
+  harness: IntegrationHarness,
+  options?: {
+    readonly delayBroadLogMs?: number;
+  },
+): Promise<{
+  readonly tracePath: string;
+  readonly env: NodeJS.ProcessEnv;
+}> => {
+  const realJj = await findExecutable("jj", {
+    cwd: harness.repo,
+    env: harness.env,
+  });
+  const tracePath = path.join(harness.root, "jj-trace.jsonl");
+  const fakeJjPath = path.join(harness.bin, "jj");
+  await writeFile(tracePath, "");
+  await writeFile(fakeJjPath, fakeJjTraceScript);
+  await chmod(fakeJjPath, 0o755);
+
+  return {
+    tracePath,
+    env: {
+      ...harness.env,
+      JJACKS_FAKE_JJ_DELAY_BROAD_LOG_MS: String(options?.delayBroadLogMs ?? 0),
+      JJACKS_FAKE_JJ_TRACE: tracePath,
+      JJACKS_REAL_JJ: realJj,
+    },
+  };
+};
+
+const readJjTrace = async (tracePath: string): Promise<ReadonlyArray<ReadonlyArray<string>>> =>
+  (await readFile(tracePath, "utf8"))
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as ReadonlyArray<string>);
 
 const initializeRepo = async (
   harness: IntegrationHarness,
@@ -962,6 +1052,45 @@ describe("jjacks diff integration", () => {
       stderr: "",
       stdout: expect.any(String),
     });
+  });
+
+  it("avoids the broad all-bookmark discovery path before diffing", async () => {
+    const harness = await createHarness();
+    await initializeRepo(harness, { childBookmark: "feat/child" });
+    const tracingJj = await installTracingJj(harness, { delayBroadLogMs: 5_000 });
+
+    const startedAt = performance.now();
+    const result = await run(
+      "node",
+      [path.join(process.cwd(), "dist/cli.js"), "diff", "--summary"],
+      {
+        cwd: harness.repo,
+        env: tracingJj.env,
+      },
+    );
+    const elapsedMs = performance.now() - startedAt;
+    const trace = await readJjTrace(tracingJj.tracePath);
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("child.txt");
+    expect(trace).toContainEqual([
+      "log",
+      "-r",
+      "::@ & bookmarks() & ~::trunk()",
+      "-T",
+      expect.any(String),
+      "--no-graph",
+    ]);
+    expect(trace).not.toContainEqual([
+      "log",
+      "-r",
+      "bookmarks() & ~::trunk()",
+      "-T",
+      expect.any(String),
+      "--no-graph",
+    ]);
+    expect(elapsedMs).toBeLessThan(5_000);
   });
 });
 

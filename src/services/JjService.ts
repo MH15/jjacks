@@ -197,6 +197,12 @@ const parseTemplateLine = (line: string): ParsedStackNode | null => {
   });
 };
 
+const parseStackNodes = (stdout: string): ReadonlyArray<ParsedStackNode> =>
+  stdout
+    .split("\n")
+    .map((line) => parseTemplateLine(line))
+    .filter((node): node is ParsedStackNode => node !== null);
+
 const stackTemplate =
   `bookmarks.map(|b| b.name()).join(",") ++ "\t" ++ change_id.short() ++ "\t" ++ commit_id.short() ++ "\t" ++ ` +
   `description.first_line() ++ "\t" ++ empty ++ "\t" ++ ` +
@@ -620,6 +626,52 @@ const buildCurrentTreeRevset = (entries: ReadonlyArray<StackEntryType>): string 
   return rootEntry === undefined ? undefined : `descendants(change_id("${rootEntry.changeId}"))`;
 };
 
+const getCurrentPathStack = Effect.gen(function* () {
+  const process = yield* ProcessService;
+  yield* ensureAdvanceBookmarksEnabled;
+
+  const currentPath = yield* process.run(
+    "jj",
+    ["log", "-r", "::@ & bookmarks() & ~::trunk()", "-T", stackTemplate, "--no-graph"],
+    {
+      allowNonZeroExit: true,
+    },
+  );
+
+  if (currentPath.exitCode !== 0) {
+    if (currentPath.stderr.includes("There is no jj repo")) {
+      return yield* Effect.fail(
+        new CliError(
+          'This directory is a Git repo but not a jj repo yet. Run "jj git init" here first, then rerun jjacks.',
+        ),
+      );
+    }
+
+    return yield* Effect.fail(
+      new CliError(
+        [`Failed to inspect the current jj stack.`, currentPath.stderr, currentPath.stdout]
+          .filter(Boolean)
+          .join("\n"),
+      ),
+    );
+  }
+
+  const currentPathNodes = [...parseStackNodes(currentPath.stdout)].reverse();
+  const currentBookmarkName = currentPathNodes[currentPathNodes.length - 1]?.name;
+
+  return yield* Effect.forEach(currentPathNodes, (node) =>
+    decodeWithSchema(
+      StackEntry,
+      {
+        ...node,
+        branchName: deriveBranchName(node.name),
+        isCurrent: node.name === currentBookmarkName,
+      },
+      `Failed to decode stack entry ${node.name}`,
+    ),
+  );
+});
+
 const make = {
   ensureAdvanceBookmarksEnabled,
   getStackCommentLocation,
@@ -852,7 +904,7 @@ const make = {
   }) =>
     Effect.gen(function* () {
       const process = yield* ProcessService;
-      const stack = yield* make.getCurrentStack;
+      const stack = yield* getCurrentPathStack;
       if (stack.length === 0) {
         return yield* Effect.fail(
           new CliError(
@@ -910,15 +962,8 @@ const make = {
       );
     }
 
-    const parseNodes = (stdout: string) =>
-      stdout
-        .split("\n")
-        .map((line) => parseTemplateLine(line))
-        .filter((node): node is ParsedStackNode => node !== null)
-        .map((node) => node);
-
-    const nodes = parseNodes(allBookmarks.stdout);
-    const currentPathNodes = [...parseNodes(currentPath.stdout)].reverse();
+    const nodes = parseStackNodes(allBookmarks.stdout);
+    const currentPathNodes = [...parseStackNodes(currentPath.stdout)].reverse();
     const currentBookmarkName = currentPathNodes[currentPathNodes.length - 1]?.name;
     const ordered = yield* Effect.forEach(orderStackNodes(nodes, currentPathNodes), (node) =>
       decodeWithSchema(
