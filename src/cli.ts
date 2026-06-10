@@ -385,7 +385,7 @@ const promptForGetConfirmation = (plan: ReturnType<typeof buildGetPlan>) =>
           message: plan.willOverwriteLocal
             ? `Overwrite local bookmark ${plan.branchName} with origin/${plan.branchName}?`
             : "Apply this get plan?",
-          default: !plan.willOverwriteLocal,
+          default: true,
         },
         {
           clearPromptOnDone: true,
@@ -400,7 +400,7 @@ const promptForMergeConfirmation = (message: string) =>
       confirm(
         {
           message,
-          default: false,
+          default: true,
         },
         {
           clearPromptOnDone: true,
