@@ -1,3 +1,7 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 import { Effect, Layer, Cause } from "effect";
 
@@ -152,6 +156,174 @@ describe("GitHubService.findPullRequestsByHeads", () => {
 });
 
 describe("GitHubService.createPullRequest", () => {
+  it("creates PRs with an empty body by default", async () => {
+    const calls: Array<ReadonlyArray<string>> = [];
+    const processLayer = Layer.succeed(ProcessService, {
+      run: (_command: string, args: ReadonlyArray<string>) => {
+        calls.push(args);
+
+        if (args[0] === "pr" && args[1] === "create") {
+          return Effect.succeed({ stdout: "", stderr: "", exitCode: 0 });
+        }
+
+        if (args[0] === "pr" && args[1] === "list") {
+          return Effect.succeed({
+            stdout: JSON.stringify([
+              {
+                number: 12,
+                url: "https://github.com/MH15/jjacks/pull/12",
+                title: "feat/ui",
+                headRefName: "feat/ui",
+                baseRefName: "main",
+                state: "OPEN",
+                isDraft: false,
+                body: "",
+              },
+            ]),
+            stderr: "",
+            exitCode: 0,
+          });
+        }
+
+        return Effect.die(`Unexpected command: gh ${args.join(" ")}`);
+      },
+    });
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const github = yield* GitHubService;
+        return yield* github.createPullRequest({
+          repoRoot: "/tmp/repo",
+          headBranch: "feat/ui",
+          baseBranch: "main",
+          title: "feat/ui",
+        });
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, GitHubServiceLive))),
+    );
+
+    expect(calls[0]).toEqual([
+      "pr",
+      "create",
+      "--head",
+      "feat/ui",
+      "--base",
+      "main",
+      "--title",
+      "feat/ui",
+      "--body",
+      "",
+    ]);
+  });
+
+  it("creates PRs with the repo template when configured", async () => {
+    const previousCwd = process.cwd();
+    const repo = mkdtempSync(join(tmpdir(), "jjacks-gh-test-"));
+    const subdir = join(repo, "packages", "app");
+    mkdirSync(join(repo, ".github"));
+    mkdirSync(subdir, { recursive: true });
+    writeFileSync(join(repo, ".github", "pull_request_template.md"), "template body");
+    process.chdir(subdir);
+
+    try {
+      const calls: Array<ReadonlyArray<string>> = [];
+      const processLayer = Layer.succeed(ProcessService, {
+        run: (_command: string, args: ReadonlyArray<string>) => {
+          calls.push(args);
+
+          if (args[0] === "pr" && args[1] === "create") {
+            return Effect.succeed({ stdout: "", stderr: "", exitCode: 0 });
+          }
+
+          if (args[0] === "pr" && args[1] === "list") {
+            return Effect.succeed({
+              stdout: JSON.stringify([
+                {
+                  number: 12,
+                  url: "https://github.com/MH15/jjacks/pull/12",
+                  title: "feat/ui",
+                  headRefName: "feat/ui",
+                  baseRefName: "main",
+                  state: "OPEN",
+                  isDraft: false,
+                  body: "template body",
+                },
+              ]),
+              stderr: "",
+              exitCode: 0,
+            });
+          }
+
+          return Effect.die(`Unexpected command: gh ${args.join(" ")}`);
+        },
+      });
+
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const github = yield* GitHubService;
+          return yield* github.createPullRequest({
+            repoRoot: repo,
+            headBranch: "feat/ui",
+            baseBranch: "main",
+            title: "feat/ui",
+            useTemplate: true,
+          });
+        }).pipe(Effect.provide(Layer.mergeAll(processLayer, GitHubServiceLive))),
+      );
+
+      expect(calls[0]).toEqual([
+        "pr",
+        "create",
+        "--head",
+        "feat/ui",
+        "--base",
+        "main",
+        "--title",
+        "feat/ui",
+        "--template",
+        join(repo, ".github", "pull_request_template.md"),
+      ]);
+    } finally {
+      process.chdir(previousCwd);
+    }
+  });
+
+  it("fails clearly when template use is configured but no repo template exists", async () => {
+    const previousCwd = process.cwd();
+    const repo = mkdtempSync(join(tmpdir(), "jjacks-gh-test-"));
+    process.chdir(repo);
+
+    try {
+      const processLayer = Layer.succeed(ProcessService, {
+        run: () => Effect.die("gh should not run when the template is missing."),
+      });
+
+      const exit = await Effect.runPromiseExit(
+        Effect.gen(function* () {
+          const github = yield* GitHubService;
+          return yield* github.createPullRequest({
+            repoRoot: repo,
+            headBranch: "feat/ui",
+            baseBranch: "main",
+            title: "feat/ui",
+            useTemplate: true,
+          });
+        }).pipe(Effect.provide(Layer.mergeAll(processLayer, GitHubServiceLive))),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure") {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value.message).toContain("no default pull request template was found");
+          expect(failure.value.message).toContain(".github/pull_request_template.md");
+        }
+      }
+    } finally {
+      process.chdir(previousCwd);
+    }
+  });
+
   it("turns the no-commits-between GitHub error into a sync hint", async () => {
     const processLayer = Layer.succeed(ProcessService, {
       run: (_command: string, args: ReadonlyArray<string>) => {
@@ -174,6 +346,7 @@ describe("GitHubService.createPullRequest", () => {
       Effect.gen(function* () {
         const github = yield* GitHubService;
         return yield* github.createPullRequest({
+          repoRoot: "/tmp/repo",
           headBranch: "feat/ui",
           baseBranch: "main",
           title: "feat/ui",

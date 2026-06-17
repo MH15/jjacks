@@ -47,6 +47,7 @@ const repoInfo: RepoInfo = {
 
 const makeLayer = (options?: {
   readonly initiallyPushed?: ReadonlyArray<string>;
+  readonly usePullRequestTemplate?: boolean;
   readonly existingChildPr?: {
     readonly title: string;
     readonly baseRefName: string;
@@ -93,6 +94,10 @@ const makeLayer = (options?: {
     });
   }
   const createdPullRequests: Array<string> = [];
+  const createPullRequestOptions: Array<{
+    readonly repoRoot: string;
+    readonly useTemplate: boolean | undefined;
+  }> = [];
   const updatedPullRequests: Array<number> = [];
   const issueComments = new Map([
     [
@@ -112,6 +117,7 @@ const makeLayer = (options?: {
   const jjLayer = Layer.succeed(JjService, {
     ensureAdvanceBookmarksEnabled: Effect.void,
     getStackCommentLocation: Effect.succeed("comment" as const),
+    getPullRequestUseTemplate: Effect.succeed(options?.usePullRequestTemplate ?? false),
     getCurrentStack: Effect.succeed(stack),
     getCurrentTree: Effect.succeed(stack),
     getTrackedBookmarks: Effect.succeed(stack),
@@ -156,8 +162,9 @@ const makeLayer = (options?: {
       ),
     findPullRequestByHead: (branchName: string) =>
       Effect.succeed(pullRequests.get(branchName) ?? null),
-    createPullRequest: ({ headBranch, baseBranch, title }) =>
+    createPullRequest: ({ repoRoot, headBranch, baseBranch, title, useTemplate }) =>
       Effect.sync(() => {
+        createPullRequestOptions.push({ repoRoot, useTemplate });
         const number = pullRequests.size + 12;
         const created = {
           number,
@@ -263,6 +270,7 @@ const makeLayer = (options?: {
     ),
     pushedBookmarks,
     createdPullRequests,
+    createPullRequestOptions,
     updatedPullRequests,
     updatedCommentPullRequests,
     describedBookmarks,
@@ -311,10 +319,27 @@ describe("StackService with injected fakes", () => {
     expect(status.entries[1]?.needsBookmarkPush).toBe(true);
   });
 
+  it("passes the configured pull request template preference when creating PRs", async () => {
+    const harness = makeLayer({ usePullRequestTemplate: true });
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const stackService = yield* StackService;
+        return yield* stackService.executeSync;
+      }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(harness.createdPullRequests).toEqual(["feat/ui"]);
+    expect(harness.createPullRequestOptions).toEqual([
+      { repoRoot: "/tmp/repo", useTemplate: true },
+    ]);
+  });
+
   it("supports an empty active stack without treating it as an error", async () => {
     const jjLayer = Layer.succeed(JjService, {
       ensureAdvanceBookmarksEnabled: Effect.void,
       getStackCommentLocation: Effect.succeed("comment" as const),
+      getPullRequestUseTemplate: Effect.succeed(false),
       getCurrentStack: Effect.succeed([]),
       getCurrentTree: Effect.succeed([]),
       getTrackedBookmarks: Effect.succeed([]),
@@ -426,6 +451,7 @@ describe("StackService with injected fakes", () => {
     const jjLayer = Layer.succeed(JjService, {
       ensureAdvanceBookmarksEnabled: Effect.void,
       getStackCommentLocation: Effect.succeed("comment" as const),
+      getPullRequestUseTemplate: Effect.succeed(false),
       getCurrentStack: Effect.succeed([]),
       getCurrentTree: Effect.succeed([]),
       getTrackedBookmarks: Effect.succeed(trackedBookmarks),
@@ -538,6 +564,7 @@ describe("StackService with injected fakes", () => {
     const jjLayer = Layer.succeed(JjService, {
       ensureAdvanceBookmarksEnabled: Effect.void,
       getStackCommentLocation: Effect.succeed("comment" as const),
+      getPullRequestUseTemplate: Effect.succeed(false),
       getCurrentStack: Effect.succeed(currentStack),
       getCurrentTree: Effect.succeed(currentStack),
       getTrackedBookmarks: Effect.succeed(currentStack),
@@ -685,6 +712,7 @@ describe("StackService with injected fakes", () => {
     const jjLayer = Layer.succeed(JjService, {
       ensureAdvanceBookmarksEnabled: Effect.void,
       getStackCommentLocation: Effect.succeed("comment" as const),
+      getPullRequestUseTemplate: Effect.succeed(false),
       getCurrentStack: Effect.succeed(currentStack),
       getCurrentTree: Effect.succeed(currentStack),
       getTrackedBookmarks: Effect.succeed(currentStack),
@@ -869,6 +897,7 @@ describe("StackService with injected fakes", () => {
     const jjLayer = Layer.succeed(JjService, {
       ensureAdvanceBookmarksEnabled: Effect.void,
       getStackCommentLocation: Effect.succeed("comment" as const),
+      getPullRequestUseTemplate: Effect.succeed(false),
       getCurrentStack: Effect.succeed(stack),
       getCurrentTree: Effect.sync(() => {
         events.push("status");
@@ -1050,6 +1079,7 @@ describe("StackService with injected fakes", () => {
     const jjLayer = Layer.succeed(JjService, {
       ensureAdvanceBookmarksEnabled: Effect.void,
       getStackCommentLocation: Effect.succeed("comment" as const),
+      getPullRequestUseTemplate: Effect.succeed(false),
       getCurrentStack: Effect.sync(() => currentStack),
       getCurrentTree: Effect.sync(() => currentStack),
       getTrackedBookmarks: Effect.sync(() => currentStack),
@@ -1186,6 +1216,7 @@ describe("StackService with injected fakes", () => {
     const jjLayer = Layer.succeed(JjService, {
       ensureAdvanceBookmarksEnabled: Effect.void,
       getStackCommentLocation: Effect.succeed("comment" as const),
+      getPullRequestUseTemplate: Effect.succeed(false),
       getCurrentStack: Effect.succeed([
         {
           name: "feat/ui",
@@ -1335,6 +1366,7 @@ describe("StackService with injected fakes", () => {
     const jjLayer = Layer.succeed(JjService, {
       ensureAdvanceBookmarksEnabled: Effect.void,
       getStackCommentLocation: Effect.succeed("comment" as const),
+      getPullRequestUseTemplate: Effect.succeed(false),
       getCurrentStack: Effect.succeed(emptyParentStack),
       getCurrentTree: Effect.succeed(emptyParentStack),
       getTrackedBookmarks: Effect.succeed(emptyParentStack),

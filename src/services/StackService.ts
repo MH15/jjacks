@@ -374,7 +374,10 @@ const reconcileSyncPullRequests = ({
   Effect.gen(function* () {
     const gh = yield* GitHubService;
     const jj = yield* JjService;
+    const repo = yield* RepoService;
+    const repoInfo = yield* repo.getRepoInfo;
     const stackCommentLocation = yield* jj.getStackCommentLocation;
+    const pullRequestUseTemplate = yield* jj.getPullRequestUseTemplate;
     const refreshedPlan = buildSyncPlanFromStatus(entries, defaultBranch);
     const createdPullRequestBookmarks: Array<string> = [];
     const updatedPullRequestNumbers: Array<number> = [];
@@ -396,9 +399,11 @@ const reconcileSyncPullRequests = ({
             }
 
             yield* gh.createPullRequest({
+              repoRoot: repoInfo.root,
               headBranch: planEntry.entry.branchName,
               baseBranch: planEntry.intendedBaseBranch,
               title: planEntry.entry.name,
+              useTemplate: pullRequestUseTemplate,
             });
             createdPullRequestBookmarks.push(planEntry.entry.name);
             return;
