@@ -20,6 +20,7 @@ export class JjService extends Context.Tag("JjService")<
       CliError,
       ProcessService
     >;
+    readonly getPullRequestUseTemplate: Effect.Effect<boolean, CliError, ProcessService>;
     readonly getCurrentStack: Effect.Effect<
       ReadonlyArray<StackEntryType>,
       CliError,
@@ -136,6 +137,31 @@ const getStackCommentLocation = Effect.gen(function* () {
   return yield* Effect.fail(
     new CliError(
       `Unsupported value for jjacks.stack_comments.location: ${value}\nExpected one of: comment, description`,
+    ),
+  );
+});
+
+const getPullRequestUseTemplate = Effect.gen(function* () {
+  const process = yield* ProcessService;
+  const result = yield* process.run("jj", ["config", "get", "jjacks.pull_requests.use_template"], {
+    allowNonZeroExit: true,
+  });
+
+  if (result.exitCode !== 0 || result.stdout.trim().length === 0) {
+    return false;
+  }
+
+  const value = result.stdout.trim();
+  if (value === "true") {
+    return true;
+  }
+  if (value === "false") {
+    return false;
+  }
+
+  return yield* Effect.fail(
+    new CliError(
+      `Unsupported value for jjacks.pull_requests.use_template: ${value}\nExpected one of: true, false`,
     ),
   );
 });
@@ -623,6 +649,7 @@ const buildCurrentTreeRevset = (entries: ReadonlyArray<StackEntryType>): string 
 const make = {
   ensureAdvanceBookmarksEnabled,
   getStackCommentLocation,
+  getPullRequestUseTemplate,
   getTrackedBookmarks,
   getCurrentTree,
   getLocalBookmarkSnapshot: (bookmarkName: string) => getBookmarkSnapshot(bookmarkName),

@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { Context, Effect, Layer, ParseResult, Schema } from "effect";
 
 import {
@@ -19,10 +22,12 @@ export class GitHubService extends Context.Tag("GitHubService")<
       branchName: string,
     ) => Effect.Effect<PullRequestSummaryType | null, CliError, ProcessService>;
     readonly createPullRequest: (options: {
+      readonly repoRoot: string;
       readonly headBranch: string;
       readonly baseBranch: string;
       readonly title: string;
       readonly body?: string;
+      readonly useTemplate?: boolean;
     }) => Effect.Effect<PullRequestSummaryType, CliError, ProcessService>;
     readonly updatePullRequest: (options: {
       readonly number: number;
@@ -94,6 +99,27 @@ const formatPullRequestIdentity = (pullRequest: PullRequestSummaryType): string 
       : `${pullRequest.headRepositoryOwner}:${pullRequest.headRefName}`,
     `base ${pullRequest.baseRefName}`,
   ].join(" ");
+
+const pullRequestTemplateCandidates = [
+  ".github/pull_request_template.md",
+  ".github/PULL_REQUEST_TEMPLATE.md",
+  "docs/pull_request_template.md",
+  "docs/PULL_REQUEST_TEMPLATE.md",
+  "pull_request_template.md",
+  "PULL_REQUEST_TEMPLATE.md",
+] as const;
+
+const findPullRequestTemplate = (repoRoot: string) =>
+  Effect.sync(() => {
+    for (const candidate of pullRequestTemplateCandidates) {
+      const templatePath = resolve(repoRoot, candidate);
+      if (existsSync(templatePath)) {
+        return templatePath;
+      }
+    }
+
+    return undefined;
+  });
 
 const selectPullRequestForBranch = (
   branchName: string,
@@ -186,18 +212,41 @@ const make = {
     }),
 
   createPullRequest: ({
+    repoRoot,
     headBranch,
     baseBranch,
     title,
     body,
+    useTemplate,
   }: {
+    readonly repoRoot: string;
     readonly headBranch: string;
     readonly baseBranch: string;
     readonly title: string;
     readonly body?: string;
+    readonly useTemplate?: boolean;
   }) =>
     Effect.gen(function* () {
       const process = yield* ProcessService;
+      const templatePath =
+        useTemplate === true
+          ? yield* findPullRequestTemplate(repoRoot).pipe(
+              Effect.flatMap((path) =>
+                path === undefined
+                  ? Effect.fail(
+                      new CliError(
+                        [
+                          "jjacks.pull_requests.use_template is true, but no default pull request template was found.",
+                          "Searched:",
+                          ...pullRequestTemplateCandidates.map((candidate) => `- ${candidate}`),
+                        ].join("\n"),
+                      ),
+                    )
+                  : Effect.succeed(path),
+              ),
+            )
+          : undefined;
+
       yield* process
         .run("gh", [
           "pr",
@@ -208,8 +257,7 @@ const make = {
           baseBranch,
           "--title",
           title,
-          "--body",
-          body ?? "",
+          ...(templatePath === undefined ? ["--body", body ?? ""] : ["--template", templatePath]),
         ])
         .pipe(
           Effect.catchIf(

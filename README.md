@@ -60,6 +60,12 @@ Stack breadcrumbs are written as PR comments by default. To write them into PR d
 jj config set --repo jjacks.stack_comments.location description
 ```
 
+New pull requests are created with an empty description by default. To use the repo's default pull request template when `jjacks sync` creates PRs:
+
+```bash
+jj config set --repo jjacks.pull_requests.use_template true
+```
+
 ## Commands
 
 - `jjacks doctor`

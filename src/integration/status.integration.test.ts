@@ -155,7 +155,8 @@ if (args[0] === "pr" && args[1] === "create") {
   const head = valueAfter("--head");
   const base = valueAfter("--base");
   const title = valueAfter("--title");
-  const body = valueAfter("--body") ?? "";
+  const template = valueAfter("--template");
+  const body = template === undefined ? (valueAfter("--body") ?? "") : readFileSync(template, "utf8");
 
   if (head === undefined || base === undefined || title === undefined) {
     console.error("fake gh pr create requires --head, --base, and --title");
@@ -259,6 +260,7 @@ const createHarness = async (options?: {
   readonly pullRequests?: ReadonlyArray<FakePullRequest>;
   readonly comments?: Record<string, ReadonlyArray<FakePullRequestComment>>;
   readonly stackCommentLocation?: "comment" | "description";
+  readonly pullRequestUseTemplate?: boolean;
 }): Promise<IntegrationHarness> => {
   const root = await mkdtemp(path.join(os.tmpdir(), "jjacks-integration-"));
   const repo = path.join(root, "repo");
@@ -280,6 +282,9 @@ const createHarness = async (options?: {
       ...(options?.stackCommentLocation === undefined
         ? []
         : ["[jjacks.stack_comments]", `location = "${options.stackCommentLocation}"`, ""]),
+      ...(options?.pullRequestUseTemplate === undefined
+        ? []
+        : ["[jjacks.pull_requests]", `use_template = ${options.pullRequestUseTemplate}`, ""]),
       "[user]",
       'name = "Integration Test"',
       'email = "integration@example.com"',
@@ -614,6 +619,34 @@ describe("jjacks sync integration", () => {
     });
     expect(state.comments?.["12"]?.[0]?.body).toContain("jjacks:stack");
     expect(state.comments?.[String(childPullRequest?.number)]?.[0]?.body).toContain("jjacks:stack");
+  });
+
+  it("executes sync by creating missing PRs with the repo pull request template when configured", async () => {
+    const harness = await createHarness({ pullRequestUseTemplate: true });
+    await initializeRepo(harness, { childBookmark: "feat/child" });
+    await mkdir(path.join(harness.repo, ".github"));
+    await writeFile(
+      path.join(harness.repo, ".github", "pull_request_template.md"),
+      "## Summary\\n\\nTemplate from repo.\\n",
+    );
+
+    const result = await run(
+      "node",
+      [path.join(process.cwd(), "dist/cli.js"), "sync", "--execute"],
+      {
+        cwd: harness.repo,
+        env: harness.env,
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toContain("Unexpected fake gh call");
+
+    const state = await readFakeGhState(harness);
+    const childPullRequest = state.pullRequests.find(
+      (pullRequest) => pullRequest.headRefName === "feat/child",
+    );
+    expect(childPullRequest?.body).toContain("Template from repo.");
   });
 
   it("executes sync by retargeting existing PRs without changing their title", async () => {

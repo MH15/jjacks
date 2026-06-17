@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Layer } from "effect";
 
 import { JjService, JjServiceLive } from "../src/services/JjService";
 import { ProcessService, type ProcessResult } from "../src/services/ProcessService";
@@ -12,6 +12,73 @@ const makeProcessLayer = (
   Layer.succeed(ProcessService, {
     run: (command: string, args: ReadonlyArray<string>) => Effect.succeed(responses(command, args)),
   });
+
+describe("JjService.getPullRequestUseTemplate", () => {
+  it("defaults to false when no repo config is set", async () => {
+    const processLayer = makeProcessLayer((_command, args) => {
+      if (args.join(" ") === "config get jjacks.pull_requests.use_template") {
+        return { stdout: "", stderr: "", exitCode: 1 };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    const useTemplate = await Effect.runPromise(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        return yield* jjService.getPullRequestUseTemplate;
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive))),
+    );
+
+    expect(useTemplate).toBe(false);
+  });
+
+  it("reads true from repo config", async () => {
+    const processLayer = makeProcessLayer((_command, args) => {
+      if (args.join(" ") === "config get jjacks.pull_requests.use_template") {
+        return { stdout: "true", stderr: "", exitCode: 0 };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    const useTemplate = await Effect.runPromise(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        return yield* jjService.getPullRequestUseTemplate;
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive))),
+    );
+
+    expect(useTemplate).toBe(true);
+  });
+
+  it("rejects unsupported config values", async () => {
+    const processLayer = makeProcessLayer((_command, args) => {
+      if (args.join(" ") === "config get jjacks.pull_requests.use_template") {
+        return { stdout: "sometimes", stderr: "", exitCode: 0 };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        return yield* jjService.getPullRequestUseTemplate;
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value.message).toContain("jjacks.pull_requests.use_template");
+        expect(failure.value.message).toContain("true, false");
+      }
+    }
+  });
+});
 
 describe("JjService.editWorkingCopyOnStack", () => {
   it("rebases the effective root and edits the current bookmark for amend-style work", async () => {
