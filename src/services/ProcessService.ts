@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { Context, Effect, Layer } from "effect";
 
 import { CliError } from "../errors";
+import { recordProcessTiming } from "./TelemetryService";
 
 export interface ProcessResult {
   readonly stdout: string;
@@ -34,6 +35,7 @@ const make = {
     },
   ) =>
     Effect.async<ProcessResult, CliError>((resume) => {
+      const startedAtMs = Date.now();
       const child = spawn(command, args, {
         cwd: options?.cwd,
         stdio: ["ignore", "pipe", "pipe"],
@@ -69,11 +71,34 @@ const make = {
       };
 
       const onError = (error: Error) => {
+        recordProcessTiming({
+          command,
+          args,
+          startedAtMs,
+          finishedAtMs: Date.now(),
+          exitCode: null,
+          status: "failure",
+          ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
+          error: error.message,
+        });
         resolve(Effect.fail(new CliError(`Failed to run ${command}: ${error.message}`)));
       };
 
       const onClose = (exitCode: number | null) => {
         const normalizedExit = exitCode ?? 1;
+        recordProcessTiming({
+          command,
+          args,
+          startedAtMs,
+          finishedAtMs: Date.now(),
+          exitCode: normalizedExit,
+          status:
+            normalizedExit === 0 || options?.allowNonZeroExit === true ? "success" : "failure",
+          ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
+          ...(normalizedExit === 0 || options?.allowNonZeroExit === true
+            ? {}
+            : { error: stderr.trim() || stdout.trim() }),
+        });
         if (normalizedExit !== 0 && options?.allowNonZeroExit !== true) {
           resolve(
             Effect.fail(

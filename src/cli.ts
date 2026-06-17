@@ -29,6 +29,7 @@ import {
 import { ProcessServiceLive } from "./services/ProcessService";
 import { RepoService, RepoServiceLive } from "./services/RepoService";
 import { StackService, StackServiceLive, type PreparedSyncState } from "./services/StackService";
+import { TelemetryService, TelemetryServiceLive } from "./services/TelemetryService";
 
 const sharedLayer = Layer.mergeAll(
   ProcessServiceLive,
@@ -37,26 +38,48 @@ const sharedLayer = Layer.mergeAll(
   GitServiceLive,
   GitHubServiceLive,
   ProgressServiceLive,
+  TelemetryServiceLive,
   StackServiceLive,
 );
 
-const doctor = Command.make("doctor", {}, () =>
+const runTelemetryCommand = <A, E, R>(
+  command: string,
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R | TelemetryService> =>
   Effect.gen(function* () {
-    const jjService = yield* JjService;
-    const stackService = yield* StackService;
-    yield* jjService.ensureAdvanceBookmarksEnabled;
-    const status = yield* stackService.getStatus;
+    const telemetry = yield* TelemetryService;
+    return yield* telemetry.withCommand(
+      {
+        command,
+        args: process.argv.slice(2),
+      },
+      effect,
+    );
+  });
 
-    yield* Console.log(renderDoctor(status));
-  }),
+const doctor = Command.make("doctor", {}, () =>
+  runTelemetryCommand(
+    "doctor",
+    Effect.gen(function* () {
+      const jjService = yield* JjService;
+      const stackService = yield* StackService;
+      yield* jjService.ensureAdvanceBookmarksEnabled;
+      const status = yield* stackService.getStatus;
+
+      yield* Console.log(renderDoctor(status));
+    }),
+  ),
 ).pipe(Command.withDescription("Check repo state and required jj config."));
 
 const status = Command.make("status", {}, () =>
-  Effect.gen(function* () {
-    const stackService = yield* StackService;
-    const result = yield* stackService.getStatus;
-    yield* Console.log(renderStatus(result.repoRoot, result.entries));
-  }),
+  runTelemetryCommand(
+    "status",
+    Effect.gen(function* () {
+      const stackService = yield* StackService;
+      const result = yield* stackService.getStatus;
+      yield* Console.log(renderStatus(result.repoRoot, result.entries));
+    }),
+  ),
 ).pipe(Command.withDescription("Show the active bookmark stack, push state, and PR mapping."));
 
 const bookmarkName = Args.text({ name: "bookmark-name" }).pipe(
@@ -64,19 +87,22 @@ const bookmarkName = Args.text({ name: "bookmark-name" }).pipe(
 );
 
 const create = Command.make("create", { bookmarkName }, ({ bookmarkName }) =>
-  Effect.gen(function* () {
-    const jjService = yield* JjService;
-    yield* jjService.createBookmark({
-      bookmarkName,
-      message: bookmarkName,
-    });
-    yield* jjService.ensureBookmarkDescription(bookmarkName, bookmarkName);
-    yield* Console.log(
-      [`created bookmark ${bookmarkName}`, "Next, make some changes then run jjacks sync."].join(
-        "\n",
-      ),
-    );
-  }),
+  runTelemetryCommand(
+    "create",
+    Effect.gen(function* () {
+      const jjService = yield* JjService;
+      yield* jjService.createBookmark({
+        bookmarkName,
+        message: bookmarkName,
+      });
+      yield* jjService.ensureBookmarkDescription(bookmarkName, bookmarkName);
+      yield* Console.log(
+        [`created bookmark ${bookmarkName}`, "Next, make some changes then run jjacks sync."].join(
+          "\n",
+        ),
+      );
+    }),
+  ),
 ).pipe(
   Command.withDescription("Open a new child jj change and bookmark it as the next stacked PR."),
 );
@@ -186,24 +212,33 @@ const resolveBookmarkMove = (direction: "up" | "down") =>
   });
 
 const up = Command.make("up", {}, () =>
-  Effect.gen(function* () {
-    const move = yield* resolveBookmarkMove("up");
-    yield* runMoveCommand("up", move);
-  }),
+  runTelemetryCommand(
+    "up",
+    Effect.gen(function* () {
+      const move = yield* resolveBookmarkMove("up");
+      yield* runMoveCommand("up", move);
+    }),
+  ),
 ).pipe(Command.withDescription("Move to the next bookmark in the current bookmark stack."));
 
 const u = Command.make("u", {}, () =>
-  Effect.gen(function* () {
-    const move = yield* resolveBookmarkMove("up");
-    yield* runMoveCommand("up", move);
-  }),
+  runTelemetryCommand(
+    "u",
+    Effect.gen(function* () {
+      const move = yield* resolveBookmarkMove("up");
+      yield* runMoveCommand("up", move);
+    }),
+  ),
 ).pipe(Command.withDescription("Alias for `up`."));
 
 const down = Command.make("down", {}, () =>
-  Effect.gen(function* () {
-    const move = yield* resolveBookmarkMove("down");
-    yield* runMoveCommand("down", move);
-  }),
+  runTelemetryCommand(
+    "down",
+    Effect.gen(function* () {
+      const move = yield* resolveBookmarkMove("down");
+      yield* runMoveCommand("down", move);
+    }),
+  ),
 ).pipe(
   Command.withDescription(
     "Move to the previous bookmark in the current stack, or to a trunk continuation from the root.",
@@ -211,10 +246,13 @@ const down = Command.make("down", {}, () =>
 );
 
 const d = Command.make("d", {}, () =>
-  Effect.gen(function* () {
-    const move = yield* resolveBookmarkMove("down");
-    yield* runMoveCommand("down", move);
-  }),
+  runTelemetryCommand(
+    "d",
+    Effect.gen(function* () {
+      const move = yield* resolveBookmarkMove("down");
+      yield* runMoveCommand("down", move);
+    }),
+  ),
 ).pipe(Command.withDescription("Alias for `down`."));
 
 const active = Options.boolean("active").pipe(
@@ -231,21 +269,24 @@ const log = Command.make(
   "log",
   { active, bookmarksOnly, noGraph },
   ({ active, bookmarksOnly, noGraph }) =>
-    Effect.gen(function* () {
-      if (active && bookmarksOnly) {
-        return yield* Effect.fail(
-          new CliError("Choose at most one log scope flag: --active or --bookmarks-only."),
-        );
-      }
+    runTelemetryCommand(
+      "log",
+      Effect.gen(function* () {
+        if (active && bookmarksOnly) {
+          return yield* Effect.fail(
+            new CliError("Choose at most one log scope flag: --active or --bookmarks-only."),
+          );
+        }
 
-      const jjService = yield* JjService;
-      const output = yield* jjService.logBookmarks({
-        mode: active ? "active" : bookmarksOnly ? "bookmarks-only" : "tree",
-        noGraph,
-      });
+        const jjService = yield* JjService;
+        const output = yield* jjService.logBookmarks({
+          mode: active ? "active" : bookmarksOnly ? "bookmarks-only" : "tree",
+          noGraph,
+        });
 
-      yield* Console.log(output);
-    }),
+        yield* Console.log(output);
+      }),
+    ),
 ).pipe(
   Command.withDescription("Show the tracked jj work tree above trunk using the jjacks sync model."),
 );
@@ -262,20 +303,23 @@ const stat = Options.boolean("stat").pipe(
 );
 
 const diff = Command.make("diff", { against, summary, stat }, ({ against, summary, stat }) =>
-  Effect.gen(function* () {
-    const jjService = yield* JjService;
-    const repo = yield* RepoService;
-    const repoInfo = yield* repo.getRepoInfo;
-    const format = resolveDiffFormat({ summary, stat });
-    const againstRevset = Option.getOrUndefined(against);
-    const output = yield* jjService.diffCurrentStack({
-      defaultBranch: repoInfo.defaultBranch ?? "main",
-      ...(againstRevset === undefined ? {} : { against: againstRevset }),
-      format,
-    });
+  runTelemetryCommand(
+    "diff",
+    Effect.gen(function* () {
+      const jjService = yield* JjService;
+      const repo = yield* RepoService;
+      const repoInfo = yield* repo.getRepoInfo;
+      const format = resolveDiffFormat({ summary, stat });
+      const againstRevset = Option.getOrUndefined(against);
+      const output = yield* jjService.diffCurrentStack({
+        defaultBranch: repoInfo.defaultBranch ?? "main",
+        ...(againstRevset === undefined ? {} : { against: againstRevset }),
+        format,
+      });
 
-    yield* Console.log(output);
-  }),
+      yield* Console.log(output);
+    }),
+  ),
 ).pipe(
   Command.withDescription(
     "Diff the current stacked change against its parent bookmark or another revset.",
@@ -295,63 +339,70 @@ const get = Command.make(
   "get",
   { branchName: getBranchName, dryRun: getDryRun },
   ({ branchName, dryRun }) =>
-    Effect.gen(function* () {
-      yield* validateGetBranchName(branchName);
+    runTelemetryCommand(
+      "get",
+      Effect.gen(function* () {
+        yield* validateGetBranchName(branchName);
 
-      const repo = yield* RepoService;
-      const jjService = yield* JjService;
-      const remoteCommitId = yield* repo.findRemoteHead(branchName);
-      if (remoteCommitId === undefined) {
-        return yield* Effect.fail(
-          new CliError(`Remote branch origin/${branchName} was not found.`),
+        const repo = yield* RepoService;
+        const jjService = yield* JjService;
+        const remoteCommitId = yield* repo.findRemoteHead(branchName);
+        if (remoteCommitId === undefined) {
+          return yield* Effect.fail(
+            new CliError(`Remote branch origin/${branchName} was not found.`),
+          );
+        }
+
+        const local = yield* jjService.getLocalBookmarkSnapshot(branchName);
+        const knownRemote = yield* jjService.getRemoteBookmarkSnapshot(branchName);
+        const plan = buildGetPlan({
+          branchName,
+          ...(local === undefined ? {} : { local }),
+          remote:
+            knownRemote?.commitId === remoteCommitId
+              ? knownRemote
+              : {
+                  changeId: "",
+                  commitId: remoteCommitId,
+                  parentCommitIds: [],
+                  diffHash: "",
+                },
+        });
+
+        yield* Console.log(renderGetPlan(plan));
+
+        if (dryRun) {
+          return;
+        }
+
+        yield* ensureInteractiveTerminal(`Getting ${branchName}`);
+        const confirmed = yield* promptForGetConfirmation(plan);
+        if (!confirmed) {
+          yield* Console.log("get canceled");
+          return;
+        }
+
+        yield* repo.fetchOrigin;
+        const remote = yield* jjService.getRemoteBookmarkSnapshot(branchName);
+        if (remote === undefined) {
+          return yield* Effect.fail(
+            new CliError(
+              `Remote bookmark ${branchName}@origin was not found after fetching origin.`,
+            ),
+          );
+        }
+
+        if (plan.needsMutableImport) {
+          yield* jjService.importRemoteBookmarkAsMutable(branchName);
+        } else if (plan.local !== undefined) {
+          yield* jjService.trackRemoteBookmarkToLocal(branchName, plan.local.changeId);
+        }
+        const workingCopyLog = yield* jjService.moveToBookmark(branchName);
+        yield* Console.log(
+          [`got ${branchName}`, "", "current jj state", workingCopyLog].join("\n"),
         );
-      }
-
-      const local = yield* jjService.getLocalBookmarkSnapshot(branchName);
-      const knownRemote = yield* jjService.getRemoteBookmarkSnapshot(branchName);
-      const plan = buildGetPlan({
-        branchName,
-        ...(local === undefined ? {} : { local }),
-        remote:
-          knownRemote?.commitId === remoteCommitId
-            ? knownRemote
-            : {
-                changeId: "",
-                commitId: remoteCommitId,
-                parentCommitIds: [],
-                diffHash: "",
-              },
-      });
-
-      yield* Console.log(renderGetPlan(plan));
-
-      if (dryRun) {
-        return;
-      }
-
-      yield* ensureInteractiveTerminal(`Getting ${branchName}`);
-      const confirmed = yield* promptForGetConfirmation(plan);
-      if (!confirmed) {
-        yield* Console.log("get canceled");
-        return;
-      }
-
-      yield* repo.fetchOrigin;
-      const remote = yield* jjService.getRemoteBookmarkSnapshot(branchName);
-      if (remote === undefined) {
-        return yield* Effect.fail(
-          new CliError(`Remote bookmark ${branchName}@origin was not found after fetching origin.`),
-        );
-      }
-
-      if (plan.needsMutableImport) {
-        yield* jjService.importRemoteBookmarkAsMutable(branchName);
-      } else if (plan.local !== undefined) {
-        yield* jjService.trackRemoteBookmarkToLocal(branchName, plan.local.changeId);
-      }
-      const workingCopyLog = yield* jjService.moveToBookmark(branchName);
-      yield* Console.log([`got ${branchName}`, "", "current jj state", workingCopyLog].join("\n"));
-    }),
+      }),
+    ),
 ).pipe(Command.withDescription("Import a single remote branch as a local jj bookmark."));
 
 const execute = Options.boolean("execute").pipe(
@@ -454,21 +505,29 @@ const runStep = <A, E extends CliError, R>(
   progress: ProgressServiceApi,
   options: {
     readonly pending: ReadonlyArray<string>;
+    readonly name: string;
     readonly start: string;
     readonly done: (value: A) => string;
     readonly fail?: (error: E) => string;
   },
   effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E, R> =>
+): Effect.Effect<A, E, R | TelemetryService> =>
   Effect.gen(function* () {
     yield* progress.startChecklist({
       current: options.start,
       pending: options.pending,
     });
+    const telemetry = yield* TelemetryService;
 
-    const result = yield* effect.pipe(
-      Effect.tapError((error) =>
-        progress.failCurrent(options.fail?.(error) ?? `${options.start}: ${error.message}`),
+    const result = yield* telemetry.timeStep(
+      {
+        name: options.name,
+        label: options.start,
+      },
+      effect.pipe(
+        Effect.tapError((error) =>
+          progress.failCurrent(options.fail?.(error) ?? `${options.start}: ${error.message}`),
+        ),
       ),
     );
 
@@ -477,159 +536,167 @@ const runStep = <A, E extends CliError, R>(
   });
 
 const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
-  Effect.gen(function* () {
-    const stackService = yield* StackService;
-    const progress = yield* ProgressService;
-    const mode = resolveSyncMode({ execute, dryRun });
-    const renderColored = mode === "confirm";
-    const runExecute = (preparedForReuse?: PreparedSyncState) =>
-      Effect.gen(function* () {
-        if (preparedForReuse !== undefined) {
-          yield* ensureFreshSyncPlan(preparedForReuse);
-        }
+  runTelemetryCommand(
+    "sync",
+    Effect.gen(function* () {
+      const stackService = yield* StackService;
+      const progress = yield* ProgressService;
+      const mode = resolveSyncMode({ execute, dryRun });
+      const renderColored = mode === "confirm";
+      const runExecute = (preparedForReuse?: PreparedSyncState) =>
+        Effect.gen(function* () {
+          if (preparedForReuse !== undefined) {
+            yield* ensureFreshSyncPlan(preparedForReuse);
+          }
 
-        const labels = [
-          syncStepTitles.refresh,
-          syncStepTitles.descriptions,
-          syncStepTitles.pushes,
-          syncStepTitles.pullRequests,
-          syncStepTitles.comments,
-        ] as const;
+          const labels = [
+            syncStepTitles.refresh,
+            syncStepTitles.descriptions,
+            syncStepTitles.pushes,
+            syncStepTitles.pullRequests,
+            syncStepTitles.comments,
+          ] as const;
 
-        yield* progress.persistSuccess(`Apply this sync plan? ${chalk.cyan("Yes")}`);
+          yield* progress.persistSuccess(`Apply this sync plan? ${chalk.cyan("Yes")}`);
 
-        const prepared = yield* runStep(
-          progress,
-          {
-            start: syncStepTitles.refresh,
-            pending: pendingLabels(labels, 0),
-            done: ({ entries, defaultBranch }) => {
-              const plan = buildSyncPlanFromStatus(entries, defaultBranch);
-              return plan.completionState === "stack-complete"
-                ? `Refresh local stack (continued from ${defaultBranch})`
-                : `Refresh local stack (${plan.githubActions.length} active entr${plan.githubActions.length === 1 ? "y" : "ies"})`;
+          const prepared = yield* runStep(
+            progress,
+            {
+              name: "refresh-local-stack",
+              start: syncStepTitles.refresh,
+              pending: pendingLabels(labels, 0),
+              done: ({ entries, defaultBranch }) => {
+                const plan = buildSyncPlanFromStatus(entries, defaultBranch);
+                return plan.completionState === "stack-complete"
+                  ? `Refresh local stack (continued from ${defaultBranch})`
+                  : `Refresh local stack (${plan.githubActions.length} active entr${plan.githubActions.length === 1 ? "y" : "ies"})`;
+              },
             },
-          },
-          refreshLocalStack(stackService, preparedForReuse),
-        );
-
-        const initialPlan = buildSyncPlanFromStatus(prepared.entries, prepared.defaultBranch);
-        if (initialPlan.completionState !== "active-stack") {
-          const result = {
-            pushedBookmarks: [],
-            createdPullRequestBookmarks: [],
-            updatedPullRequestNumbers: [],
-            updatedCommentPullRequestNumbers: [],
-            warnings: [],
-            plan: initialPlan,
-            statusEntries: prepared.entries,
-          };
-          yield* Console.log(
-            `${renderSyncPreview(result.plan, { color: renderColored })}\n\n${renderExecuteSummary(result)}`,
+            refreshLocalStack(stackService, preparedForReuse),
           );
-          return;
-        }
 
-        const descriptions = yield* runStep(
-          progress,
-          {
-            start: syncStepTitles.descriptions,
-            pending: pendingLabels(labels, 1),
-            done: ({ describedBookmarks }) =>
-              describedBookmarks.length === 0
-                ? `${syncStepTitles.descriptions} (none needed)`
-                : `${syncStepTitles.descriptions} (${describedBookmarks.length})`,
-          },
-          stackService.ensureSyncDescriptions(prepared.entries),
-        );
+          const initialPlan = buildSyncPlanFromStatus(prepared.entries, prepared.defaultBranch);
+          if (initialPlan.completionState !== "active-stack") {
+            const result = {
+              pushedBookmarks: [],
+              createdPullRequestBookmarks: [],
+              updatedPullRequestNumbers: [],
+              updatedCommentPullRequestNumbers: [],
+              warnings: [],
+              plan: initialPlan,
+              statusEntries: prepared.entries,
+            };
+            yield* Console.log(
+              `${renderSyncPreview(result.plan, { color: renderColored })}\n\n${renderExecuteSummary(result)}`,
+            );
+            return;
+          }
 
-        const pushes = yield* runStep(
-          progress,
-          {
-            start: syncStepTitles.pushes,
-            pending: pendingLabels(labels, 2),
-            done: ({ pushedBookmarks }) =>
-              pushedBookmarks.length === 0
-                ? `${syncStepTitles.pushes} (none needed)`
-                : `${syncStepTitles.pushes} (${pushedBookmarks.length})`,
-          },
-          stackService.pushSyncBookmarks({
-            entries: descriptions.entries,
-            defaultBranch: prepared.defaultBranch,
-          }),
-        );
-
-        const prs = yield* runStep(
-          progress,
-          {
-            start: syncStepTitles.pullRequests,
-            pending: pendingLabels(labels, 3),
-            done: ({ createdPullRequestBookmarks, updatedPullRequestNumbers }) => {
-              const pullRequestChanges =
-                createdPullRequestBookmarks.length + updatedPullRequestNumbers.length;
-              return pullRequestChanges === 0
-                ? `${syncStepTitles.pullRequests} (no metadata changes)`
-                : `${syncStepTitles.pullRequests} (${pullRequestChanges})`;
+          const descriptions = yield* runStep(
+            progress,
+            {
+              name: "fill-blank-descriptions",
+              start: syncStepTitles.descriptions,
+              pending: pendingLabels(labels, 1),
+              done: ({ describedBookmarks }) =>
+                describedBookmarks.length === 0
+                  ? `${syncStepTitles.descriptions} (none needed)`
+                  : `${syncStepTitles.descriptions} (${describedBookmarks.length})`,
             },
-          },
-          stackService.reconcileSyncPullRequests({
-            entries: pushes.entries,
-            defaultBranch: prepared.defaultBranch,
-          }),
-        );
+            stackService.ensureSyncDescriptions(prepared.entries),
+          );
 
-        const comments = yield* runStep(
-          progress,
-          {
-            start: syncStepTitles.comments,
-            pending: pendingLabels(labels, 4),
-            done: ({ updatedCommentPullRequestNumbers, warnings }) =>
-              warnings.length === 0
-                ? `${syncStepTitles.comments} (${updatedCommentPullRequestNumbers.length})`
-                : `${syncStepTitles.comments} (${updatedCommentPullRequestNumbers.length}, ${warnings.length} warnings)`,
-          },
-          stackService.syncStackComments(prs.entries),
-        );
+          const pushes = yield* runStep(
+            progress,
+            {
+              name: "push-bookmarks",
+              start: syncStepTitles.pushes,
+              pending: pendingLabels(labels, 2),
+              done: ({ pushedBookmarks }) =>
+                pushedBookmarks.length === 0
+                  ? `${syncStepTitles.pushes} (none needed)`
+                  : `${syncStepTitles.pushes} (${pushedBookmarks.length})`,
+            },
+            stackService.pushSyncBookmarks({
+              entries: descriptions.entries,
+              defaultBranch: prepared.defaultBranch,
+            }),
+          );
 
-        const result = {
-          pushedBookmarks: pushes.pushedBookmarks,
-          createdPullRequestBookmarks: prs.createdPullRequestBookmarks,
-          updatedPullRequestNumbers: prs.updatedPullRequestNumbers,
-          updatedCommentPullRequestNumbers: comments.updatedCommentPullRequestNumbers,
-          warnings: comments.warnings,
-          plan: prs.plan,
-          statusEntries: prs.entries,
-        };
-        const preview = renderSyncPreview(result.plan, { color: renderColored });
-        yield* Console.log(`${preview}\n\n${renderExecuteSummary(result)}`);
-      });
+          const prs = yield* runStep(
+            progress,
+            {
+              name: "reconcile-pull-requests",
+              start: syncStepTitles.pullRequests,
+              pending: pendingLabels(labels, 3),
+              done: ({ createdPullRequestBookmarks, updatedPullRequestNumbers }) => {
+                const pullRequestChanges =
+                  createdPullRequestBookmarks.length + updatedPullRequestNumbers.length;
+                return pullRequestChanges === 0
+                  ? `${syncStepTitles.pullRequests} (no metadata changes)`
+                  : `${syncStepTitles.pullRequests} (${pullRequestChanges})`;
+              },
+            },
+            stackService.reconcileSyncPullRequests({
+              entries: pushes.entries,
+              defaultBranch: prepared.defaultBranch,
+            }),
+          );
 
-    if (mode === "execute") {
-      yield* runExecute();
-      return;
-    }
+          const comments = yield* runStep(
+            progress,
+            {
+              name: "sync-stack-comments",
+              start: syncStepTitles.comments,
+              pending: pendingLabels(labels, 4),
+              done: ({ updatedCommentPullRequestNumbers, warnings }) =>
+                warnings.length === 0
+                  ? `${syncStepTitles.comments} (${updatedCommentPullRequestNumbers.length})`
+                  : `${syncStepTitles.comments} (${updatedCommentPullRequestNumbers.length}, ${warnings.length} warnings)`,
+            },
+            stackService.syncStackComments(prs.entries),
+          );
 
-    const prepared = yield* stackService.prepareSync;
-    const plan = buildSyncPlanFromStatus(prepared.entries, prepared.defaultBranch);
-    const preview = renderSyncPreview(plan, { color: renderColored });
-    yield* Console.log(preview);
+          const result = {
+            pushedBookmarks: pushes.pushedBookmarks,
+            createdPullRequestBookmarks: prs.createdPullRequestBookmarks,
+            updatedPullRequestNumbers: prs.updatedPullRequestNumbers,
+            updatedCommentPullRequestNumbers: comments.updatedCommentPullRequestNumbers,
+            warnings: comments.warnings,
+            plan: prs.plan,
+            statusEntries: prs.entries,
+          };
+          const preview = renderSyncPreview(result.plan, { color: renderColored });
+          yield* Console.log(`${preview}\n\n${renderExecuteSummary(result)}`);
+        });
 
-    if (mode === "dry-run") {
-      return;
-    }
+      if (mode === "execute") {
+        yield* runExecute();
+        return;
+      }
 
-    if (!plan.hasExecutableWork) {
-      return;
-    }
+      const prepared = yield* stackService.prepareSync;
+      const plan = buildSyncPlanFromStatus(prepared.entries, prepared.defaultBranch);
+      const preview = renderSyncPreview(plan, { color: renderColored });
+      yield* Console.log(preview);
 
-    const confirmed = yield* promptForSyncConfirmation;
-    if (!confirmed) {
-      yield* Console.log("sync canceled");
-      return;
-    }
+      if (mode === "dry-run") {
+        return;
+      }
 
-    yield* runExecute(prepared);
-  }),
+      if (!plan.hasExecutableWork) {
+        return;
+      }
+
+      const confirmed = yield* promptForSyncConfirmation;
+      if (!confirmed) {
+        yield* Console.log("sync canceled");
+        return;
+      }
+
+      yield* runExecute(prepared);
+    }),
+  ),
 ).pipe(
   Command.withDescription(
     "Preview and sync the current bookmark stack to GitHub pull requests and stack comments.",
@@ -637,45 +704,48 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
 );
 
 const merge = Command.make("merge", {}, () =>
-  Effect.gen(function* () {
-    const stackService = yield* StackService;
-    const github = yield* GitHubService;
-    const prepared = yield* stackService.prepareSync;
-    const analysis = analyzeReviewStack(prepared.entries, prepared.defaultBranch);
-    const bottomEntry = analysis.syncableEntries[0];
+  runTelemetryCommand(
+    "merge",
+    Effect.gen(function* () {
+      const stackService = yield* StackService;
+      const github = yield* GitHubService;
+      const prepared = yield* stackService.prepareSync;
+      const analysis = analyzeReviewStack(prepared.entries, prepared.defaultBranch);
+      const bottomEntry = analysis.syncableEntries[0];
 
-    if (bottomEntry === undefined) {
-      return yield* Effect.fail(
-        new CliError(
-          "No open PR found at the bottom of the active stack. Run `jjacks status` to inspect the stack.",
-        ),
+      if (bottomEntry === undefined) {
+        return yield* Effect.fail(
+          new CliError(
+            "No open PR found at the bottom of the active stack. Run `jjacks status` to inspect the stack.",
+          ),
+        );
+      }
+
+      const pullRequest = bottomEntry.pullRequest;
+      if (pullRequest === null) {
+        return yield* Effect.fail(
+          new CliError(
+            `Bottom stack bookmark ${bottomEntry.entry.name} has no pull request yet. Run "jjacks sync" first.`,
+          ),
+        );
+      }
+
+      const confirmed = yield* promptForMergeConfirmation(
+        formatMergeConfirmationMessage({
+          bookmarkName: bottomEntry.entry.name,
+          pullRequest,
+          color: true,
+        }),
       );
-    }
+      if (!confirmed) {
+        yield* Console.log("merge canceled");
+        return;
+      }
 
-    const pullRequest = bottomEntry.pullRequest;
-    if (pullRequest === null) {
-      return yield* Effect.fail(
-        new CliError(
-          `Bottom stack bookmark ${bottomEntry.entry.name} has no pull request yet. Run "jjacks sync" first.`,
-        ),
-      );
-    }
-
-    const confirmed = yield* promptForMergeConfirmation(
-      formatMergeConfirmationMessage({
-        bookmarkName: bottomEntry.entry.name,
-        pullRequest,
-        color: true,
-      }),
-    );
-    if (!confirmed) {
-      yield* Console.log("merge canceled");
-      return;
-    }
-
-    yield* github.mergePullRequestWhenReady(pullRequest.number);
-    yield* Console.log(`merge requested for PR #${pullRequest.number}`);
-  }),
+      yield* github.mergePullRequestWhenReady(pullRequest.number);
+      yield* Console.log(`merge requested for PR #${pullRequest.number}`);
+    }),
+  ),
 ).pipe(
   Command.withDescription("Merge, or enable auto-merge for, the bottom PR in the current stack."),
 );
