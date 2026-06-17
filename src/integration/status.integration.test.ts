@@ -511,6 +511,55 @@ describe("jjacks status integration", () => {
   });
 });
 
+describe("jjacks get integration", () => {
+  it("plans get main as a trunk continuation without syncing the active stack", async () => {
+    const harness = await createHarness();
+    await initializeRepo(harness, { childBookmark: "feat/child" });
+    const beforeMain = await run(
+      "jj",
+      ["log", "-r", "main", "-T", 'commit_id ++ "\\n"', "--no-graph"],
+      {
+        cwd: harness.repo,
+        env: harness.env,
+      },
+    );
+    await updateOriginMain(harness, {
+      fileName: "main.txt",
+      content: "fresh main\n",
+      message: "fresh main",
+    });
+
+    const result = await run(
+      "node",
+      [path.join(process.cwd(), "dist/cli.js"), "get", "main", "--dry-run"],
+      {
+        cwd: harness.repo,
+        env: harness.env,
+      },
+    );
+    const afterMain = await run(
+      "jj",
+      ["log", "-r", "main", "-T", 'commit_id ++ "\\n"', "--no-graph"],
+      {
+        cwd: harness.repo,
+        env: harness.env,
+      },
+    );
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("jjacks get plan");
+    expect(result.stdout).toContain("main");
+    expect(result.stdout).toContain("local bookmark will be overwritten");
+    expect(result.stdout).toContain("- fetch origin");
+    expect(result.stdout).toContain("- overwrite local bookmark main with main@origin");
+    expect(result.stdout).toContain("- continue from main");
+    expect(result.stdout).not.toContain("mutable copy");
+    expect(result.stdout).not.toContain("- edit main");
+    expect(afterMain.stdout).toBe(beforeMain.stdout);
+  });
+});
+
 describe("jjacks sync integration", () => {
   it("renders a dry-run sync plan for a real two-bookmark jj stack with fake GitHub", async () => {
     const harness = await createHarness();

@@ -87,6 +87,14 @@ jjacks get feat/coworker-branch
 
 `jjacks get <branch-name>` prints a plan and asks before fetching or editing local state. If a local bookmark with the same name already exists and points somewhere else, the prompt clearly says it will overwrite that bookmark and defaults to `No`.
 
+Use `get` on the default branch when you want a fresh trunk continuation without syncing or pushing your current stack:
+
+```bash
+jjacks get main
+```
+
+This fetches origin, moves the local default branch bookmark to its remote, and continues from that default branch using the same clean working-copy behavior as `jjacks down`.
+
 To preview without changing local state:
 
 ```bash
