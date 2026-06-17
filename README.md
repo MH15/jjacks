@@ -101,6 +101,19 @@ jjacks get feat/coworker-branch --dry-run
 
 `jjacks sync --execute` applies the plan without prompting. It may fetch, move the local default bookmark, push stack bookmarks, create or edit pull requests, and update stack breadcrumbs.
 
+## Local Telemetry
+
+`jjacks` records local command timing telemetry to `.jjacks/telemetry/commands.jsonl` inside the repo. The directory is gitignored and is intended for local performance analysis.
+
+Generate a static HTML report from the collected data:
+
+```bash
+npm run telemetry:report
+```
+
+The report is written to `.jjacks/telemetry/report.html`.
+It is a static file with no build step; the browser loads Chart.js from `esm.sh` when you open it.
+
 ## Docs
 
 - [Tutorial](./docs/tutorial.md)
