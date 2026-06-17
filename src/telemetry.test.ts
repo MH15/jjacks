@@ -108,4 +108,89 @@ describe("TelemetryService", () => {
     expect(record.durationMs).toBe(30);
     expect(record.error).toContain("not a repo");
   });
+
+  it("subtracts paused command timing from successful command duration", async () => {
+    const lines: Array<string> = [];
+    const nowValues = [1_000, 1_010, 1_060, 1_100];
+    const telemetry = makeTelemetryService({
+      cwd: () => process.cwd(),
+      now: () => nowValues.shift() ?? 1_100,
+      randomId: () => "run-3",
+      writeLine: (_repoRoot, line) => {
+        lines.push(line);
+      },
+    });
+
+    await Effect.runPromise(
+      telemetry.withCommand(
+        {
+          command: "sync",
+          args: ["sync"],
+        },
+        telemetry.pauseCommandTiming(Effect.void),
+      ),
+    );
+
+    const record = Schema.decodeUnknownSync(TelemetryCommandRecord)(JSON.parse(lines[0]!));
+    expect(record.startedAt).toBe("1970-01-01T00:00:01.000Z");
+    expect(record.durationMs).toBe(50);
+  });
+
+  it("subtracts repeated and nested pauses without double-counting", async () => {
+    const lines: Array<string> = [];
+    const nowValues = [1_000, 1_010, 1_030, 1_040, 1_070, 1_100];
+    const telemetry = makeTelemetryService({
+      cwd: () => process.cwd(),
+      now: () => nowValues.shift() ?? 1_100,
+      randomId: () => "run-4",
+      writeLine: (_repoRoot, line) => {
+        lines.push(line);
+      },
+    });
+
+    await Effect.runPromise(
+      telemetry.withCommand(
+        {
+          command: "get",
+          args: ["get", "main"],
+        },
+        Effect.gen(function* () {
+          yield* telemetry.pauseCommandTiming(Effect.void);
+          yield* telemetry.pauseCommandTiming(telemetry.pauseCommandTiming(Effect.void));
+        }),
+      ),
+    );
+
+    const record = Schema.decodeUnknownSync(TelemetryCommandRecord)(JSON.parse(lines[0]!));
+    expect(record.durationMs).toBe(50);
+  });
+
+  it("subtracts paused command timing before preserving failures", async () => {
+    const lines: Array<string> = [];
+    const nowValues = [2_000, 2_010, 2_060, 2_090];
+    const telemetry = makeTelemetryService({
+      cwd: () => process.cwd(),
+      now: () => nowValues.shift() ?? 2_090,
+      randomId: () => "run-5",
+      writeLine: (_repoRoot, line) => {
+        lines.push(line);
+      },
+    });
+
+    const exit = await Effect.runPromiseExit(
+      telemetry.withCommand(
+        {
+          command: "merge",
+          args: ["merge"],
+        },
+        telemetry.pauseCommandTiming(Effect.fail(new CliError("merge canceled"))),
+      ),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    const record = Schema.decodeUnknownSync(TelemetryCommandRecord)(JSON.parse(lines[0]!));
+    expect(record.status).toBe("failure");
+    expect(record.durationMs).toBe(40);
+    expect(record.error).toContain("merge canceled");
+  });
 });
