@@ -55,9 +55,40 @@ describe("renderSyncPreview", () => {
     const output = renderSyncPreview(plan);
 
     expect(output).toContain("jjacks sync plan");
+    expect(output).toContain("trunk");
+    expect(output).toContain("- fetch origin");
+    expect(output).toContain("- move main to main@origin");
+    expect(output).toContain("active stack");
     expect(output).toContain("feat/base");
     expect(output).toContain("- push bookmark");
     expect(output).toContain("- create PR with base main");
+    expect(output).not.toContain("github");
+    expect(output).not.toContain("local");
+  });
+
+  it("renders bookmark-specific local actions inside the matching stack entry", () => {
+    const output = renderSyncPreview({
+      ...plan,
+      localActions: [
+        "fetch origin",
+        "move main to main@origin",
+        "rebase feat/base onto main",
+        "edit feat/base",
+      ],
+    });
+
+    expect(output).toContain(
+      [
+        "active stack",
+        "feat/base",
+        "- rebase onto main",
+        "- edit working copy",
+        "- push bookmark",
+        "- create PR with base main",
+      ].join("\n"),
+    );
+    expect(output).not.toContain("rebase feat/base onto main");
+    expect(output).not.toContain("edit feat/base");
   });
 
   it("renders a friendly empty-state preview when there is no active stack", () => {

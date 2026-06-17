@@ -107,6 +107,19 @@ const formatAction = (action: string, color: boolean): string => {
   return `- ${action}`;
 };
 
+const formatLocalBookmarkAction = (action: string, bookmarkName: string): string | undefined => {
+  const rebasePrefix = `rebase ${bookmarkName} onto `;
+  if (action.startsWith(rebasePrefix)) {
+    return `rebase onto ${action.slice(rebasePrefix.length)}`;
+  }
+
+  if (action === `edit ${bookmarkName}`) {
+    return "edit working copy";
+  }
+
+  return undefined;
+};
+
 const formatNoChanges = (color: boolean): string =>
   color ? chalk.gray("- no changes") : "- no changes";
 
@@ -123,17 +136,77 @@ const renderPlanEntries = (
     return [...(index === 0 ? [] : [""]), formatBookmarkLine(entry, color), ...renderedActions];
   });
 
+const splitLocalActionsByBookmark = (
+  localActions: ReadonlyArray<string>,
+  entries: ReadonlyArray<SyncPlan["githubActions"][number]>,
+): {
+  readonly trunkActions: ReadonlyArray<string>;
+  readonly bookmarkActions: ReadonlyMap<string, ReadonlyArray<string>>;
+} => {
+  const bookmarkActions = new Map<string, Array<string>>();
+  const trunkActions: Array<string> = [];
+
+  for (const action of localActions) {
+    const matchingEntry = entries
+      .map((entry) => ({
+        bookmarkName: entry.entry.name,
+        action: formatLocalBookmarkAction(action, entry.entry.name),
+      }))
+      .find((entry) => entry.action !== undefined);
+
+    if (matchingEntry?.action !== undefined) {
+      const actions = bookmarkActions.get(matchingEntry.bookmarkName) ?? [];
+      actions.push(matchingEntry.action);
+      bookmarkActions.set(matchingEntry.bookmarkName, actions);
+    } else {
+      trunkActions.push(action);
+    }
+  }
+
+  return { trunkActions, bookmarkActions };
+};
+
+const renderActiveStackEntries = (
+  entries: ReadonlyArray<SyncPlan["githubActions"][number]>,
+  bookmarkActions: ReadonlyMap<string, ReadonlyArray<string>>,
+  color: boolean,
+): ReadonlyArray<string> =>
+  entries.flatMap((entry, index) => {
+    const localActions = bookmarkActions.get(entry.entry.name) ?? [];
+    const renderedActions = [
+      ...localActions.map((action) => formatAction(action, color)),
+      ...entry.actions.map((action) => formatAction(action, color)),
+    ];
+
+    return [
+      ...(index === 0 ? [] : [""]),
+      formatBookmarkLine(entry, color),
+      ...(renderedActions.length === 0 ? [formatNoChanges(color)] : renderedActions),
+    ];
+  });
+
 export const renderSyncPlan = (plan: SyncPlan, options: RenderSyncPreviewOptions = {}): string => {
   const color = options.color ?? false;
+  const { trunkActions, bookmarkActions } = splitLocalActionsByBookmark(
+    plan.localActions,
+    plan.githubActions,
+  );
 
   return [
     formatSyncHeader(color),
-    ...(plan.localActions.length === 0
+    ...(trunkActions.length === 0
       ? []
       : [
           "",
-          color ? chalk.cyan("local") : "local",
-          ...plan.localActions.map((action) => formatAction(action, color)),
+          color ? chalk.cyan("trunk") : "trunk",
+          ...trunkActions.map((action) => formatAction(action, color)),
+        ]),
+    ...(plan.githubActions.length === 0
+      ? []
+      : [
+          "",
+          color ? chalk.cyan("active stack") : "active stack",
+          ...renderActiveStackEntries(plan.githubActions, bookmarkActions, color),
         ]),
     ...(plan.landedEntries.length === 0
       ? []
@@ -155,13 +228,6 @@ export const renderSyncPlan = (plan: SyncPlan, options: RenderSyncPreviewOptions
           "",
           color ? chalk.cyan("blocked") : "blocked",
           ...renderPlanEntries(plan.blockedEntries, color),
-        ]),
-    ...(plan.githubActions.length === 0
-      ? []
-      : [
-          "",
-          color ? chalk.cyan("github") : "github",
-          ...renderPlanEntries(plan.githubActions, color),
         ]),
     ...(plan.completionState === "stack-complete"
       ? ["", "No syncable stack remains.", "next: jjacks create <bookmark-name>"]
