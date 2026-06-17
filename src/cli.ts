@@ -26,7 +26,7 @@ import {
   ProgressServiceLive,
   type ProgressServiceApi,
 } from "./services/ProgressService";
-import { ProcessServiceLive } from "./services/ProcessService";
+import { ProcessService, ProcessServiceLive } from "./services/ProcessService";
 import { RepoService, RepoServiceLive } from "./services/RepoService";
 import { StackService, StackServiceLive, type PreparedSyncState } from "./services/StackService";
 import { TelemetryService, TelemetryServiceLive } from "./services/TelemetryService";
@@ -55,6 +55,14 @@ const runTelemetryCommand = <A, E, R>(
       },
       effect,
     );
+  });
+
+const pauseTelemetryTiming = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R | TelemetryService> =>
+  Effect.gen(function* () {
+    const telemetry = yield* TelemetryService;
+    return yield* telemetry.pauseCommandTiming(effect);
   });
 
 const doctor = Command.make("doctor", {}, () =>
@@ -171,7 +179,13 @@ const noTargetBookmarkError = (direction: "up" | "down", currentBookmarkName: st
       : `No parent bookmark found from ${currentBookmarkName}.`,
   );
 
-const resolveBookmarkMove = (direction: "up" | "down") =>
+const resolveBookmarkMove = (
+  direction: "up" | "down",
+): Effect.Effect<
+  Effect.Effect<string, CliError, ProcessService | RepoService | TelemetryService>,
+  CliError,
+  ProcessService | RepoService | JjService | TelemetryService
+> =>
   Effect.gen(function* () {
     const jjService = yield* JjService;
     const trackedBookmarks = yield* jjService.getTrackedBookmarks;
@@ -196,7 +210,7 @@ const resolveBookmarkMove = (direction: "up" | "down") =>
           const selectedChildBookmark = yield* promptForBookmarkChoice(
             `Choose the child bookmark to continue from ${movePlan.parentBookmarkName}`,
             movePlan.childBookmarkNames,
-          );
+          ).pipe(pauseTelemetryTiming);
           return yield* jjService.moveToBookmark(selectedChildBookmark);
         });
       case "choose-root-bookmark":
@@ -205,7 +219,7 @@ const resolveBookmarkMove = (direction: "up" | "down") =>
           const selectedRootBookmark = yield* promptForBookmarkChoice(
             "Choose the surviving bookmark stack to continue",
             movePlan.rootBookmarkNames,
-          );
+          ).pipe(pauseTelemetryTiming);
           return yield* jjService.moveToBookmark(selectedRootBookmark);
         });
     }
@@ -379,7 +393,7 @@ const get = Command.make(
         }
 
         yield* ensureInteractiveTerminal(`Getting ${branchName}`);
-        const confirmed = yield* promptForGetConfirmation(plan);
+        const confirmed = yield* promptForGetConfirmation(plan).pipe(pauseTelemetryTiming);
         if (!confirmed) {
           yield* Console.log("get canceled");
           return;
@@ -696,7 +710,7 @@ const sync = Command.make("sync", { execute, dryRun }, ({ execute, dryRun }) =>
         return;
       }
 
-      const confirmed = yield* promptForSyncConfirmation;
+      const confirmed = yield* pauseTelemetryTiming(promptForSyncConfirmation);
       if (!confirmed) {
         yield* Console.log("sync canceled");
         return;
@@ -744,7 +758,7 @@ const merge = Command.make("merge", {}, () =>
           pullRequest,
           color: true,
         }),
-      );
+      ).pipe(pauseTelemetryTiming);
       if (!confirmed) {
         yield* Console.log("merge canceled");
         return;

@@ -16,3 +16,4 @@ When writing Effect code for this project, inspect `@repos/effect/` for examples
 
 - Run `npm run check` before handing off changes.
 - Use `npm run lint` for oxlint, `npm run format:check` for oxfmt checks, and `npm run format` to apply oxfmt formatting.
+- Run `npm run telemetry:report` after each logical change (before you sync the PR, etc) so we have an up-to-date idea of our performance characteristics.

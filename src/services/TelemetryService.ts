@@ -64,6 +64,7 @@ export interface TelemetryServiceApi {
     },
     effect: Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E, R>;
+  readonly pauseCommandTiming: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
 }
 
 export class TelemetryService extends Context.Tag("TelemetryService")<
@@ -80,6 +81,9 @@ interface ActiveTelemetryRun {
   readonly startedAt: string;
   readonly steps: Array<TelemetryStepTiming>;
   readonly processes: Array<TelemetryProcessTiming>;
+  pauseDepth: number;
+  pauseStartedAtMs: number | undefined;
+  pausedDurationMs: number;
 }
 
 interface TelemetryRuntime {
@@ -189,6 +193,9 @@ export const makeTelemetryService = (
           startedAt: startedAtFromMs(startedAtMs),
           steps: [],
           processes: [],
+          pauseDepth: 0,
+          pauseStartedAtMs: undefined,
+          pausedDurationMs: 0,
         };
 
         activeRun = run;
@@ -203,7 +210,7 @@ export const makeTelemetryService = (
           args: run.args,
           repoRoot: run.repoRoot,
           startedAt: run.startedAt,
-          durationMs: Math.max(0, finishedAtMs - run.startedAtMs),
+          durationMs: Math.max(0, finishedAtMs - run.startedAtMs - run.pausedDurationMs),
           status: statusForExit(exit),
           ...(Exit.isSuccess(exit) ? {} : { error: formatCause(exit.cause) }),
           steps: run.steps,
@@ -233,6 +240,33 @@ export const makeTelemetryService = (
             status: statusForExit(exit),
             ...(Exit.isSuccess(exit) ? {} : { error: formatCause(exit.cause) }),
           });
+        }
+
+        if (Exit.isSuccess(exit)) {
+          return exit.value;
+        }
+
+        return yield* Effect.failCause(exit.cause);
+      }),
+
+    pauseCommandTiming: (effect) =>
+      Effect.gen(function* () {
+        const run = activeRun;
+        if (run === undefined) {
+          return yield* effect;
+        }
+
+        if (run.pauseDepth === 0) {
+          run.pauseStartedAtMs = runtime.now();
+        }
+        run.pauseDepth += 1;
+
+        const exit = yield* Effect.exit(effect);
+
+        run.pauseDepth -= 1;
+        if (run.pauseDepth === 0 && run.pauseStartedAtMs !== undefined) {
+          run.pausedDurationMs += Math.max(0, runtime.now() - run.pauseStartedAtMs);
+          run.pauseStartedAtMs = undefined;
         }
 
         if (Exit.isSuccess(exit)) {
