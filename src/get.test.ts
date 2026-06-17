@@ -7,6 +7,7 @@ describe("buildGetPlan", () => {
   it("plans to create a missing local bookmark from origin", () => {
     const plan = buildGetPlan({
       branchName: "feat/coworker",
+      defaultBranch: "main",
       remote: {
         changeId: "remote-change",
         commitId: "abc123",
@@ -27,6 +28,7 @@ describe("buildGetPlan", () => {
   it("imports a mutable copy when the local bookmark points at the remote commit", () => {
     const plan = buildGetPlan({
       branchName: "feat/coworker",
+      defaultBranch: "main",
       local: {
         changeId: "local-change",
         commitId: "abc123",
@@ -51,6 +53,7 @@ describe("buildGetPlan", () => {
   it("plans an overwrite when local points at a different commit", () => {
     const plan = buildGetPlan({
       branchName: "feat/coworker",
+      defaultBranch: "main",
       local: {
         changeId: "local-change",
         commitId: "local",
@@ -75,6 +78,7 @@ describe("buildGetPlan", () => {
   it("keeps a mutable local duplicate when it has the same parent and diff as remote", () => {
     const plan = buildGetPlan({
       branchName: "feat/coworker",
+      defaultBranch: "main",
       local: {
         changeId: "local-change",
         commitId: "local-duplicate",
@@ -94,6 +98,57 @@ describe("buildGetPlan", () => {
     expect(plan.actions).toContain(
       "keep local bookmark feat/coworker; already has a mutable copy of feat/coworker@origin",
     );
+  });
+
+  it("plans to continue from trunk when getting the default branch", () => {
+    const plan = buildGetPlan({
+      branchName: "main",
+      defaultBranch: "main",
+      local: {
+        changeId: "local-change",
+        commitId: "local",
+        parentCommitIds: [],
+        diffHash: "local-diff",
+      },
+      remote: {
+        changeId: "remote-change",
+        commitId: "remote",
+        parentCommitIds: [],
+        diffHash: "remote-diff",
+      },
+    });
+
+    expect(plan.checkoutMode).toBe("trunk-continuation");
+    expect(plan.needsMutableImport).toBe(false);
+    expect(plan.willOverwriteLocal).toBe(true);
+    expect(plan.actions).toEqual([
+      "fetch origin",
+      "overwrite local bookmark main with main@origin",
+      "continue from main",
+    ]);
+  });
+
+  it("does not warn when the default branch already matches origin", () => {
+    const plan = buildGetPlan({
+      branchName: "main",
+      defaultBranch: "main",
+      local: {
+        changeId: "local-change",
+        commitId: "remote",
+        parentCommitIds: [],
+        diffHash: "diff",
+      },
+      remote: {
+        changeId: "remote-change",
+        commitId: "remote",
+        parentCommitIds: [],
+        diffHash: "diff",
+      },
+    });
+
+    expect(plan.checkoutMode).toBe("trunk-continuation");
+    expect(plan.willOverwriteLocal).toBe(false);
+    expect(plan.actions).toContain("keep local bookmark main; already matches main@origin");
   });
 });
 

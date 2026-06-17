@@ -346,6 +346,8 @@ const get = Command.make(
 
         const repo = yield* RepoService;
         const jjService = yield* JjService;
+        const repoInfo = yield* repo.getRepoInfo;
+        const defaultBranch = repoInfo.defaultBranch ?? "main";
         const remoteCommitId = yield* repo.findRemoteHead(branchName);
         if (remoteCommitId === undefined) {
           return yield* Effect.fail(
@@ -357,6 +359,7 @@ const get = Command.make(
         const knownRemote = yield* jjService.getRemoteBookmarkSnapshot(branchName);
         const plan = buildGetPlan({
           branchName,
+          defaultBranch,
           ...(local === undefined ? {} : { local }),
           remote:
             knownRemote?.commitId === remoteCommitId
@@ -394,10 +397,15 @@ const get = Command.make(
 
         if (plan.needsMutableImport) {
           yield* jjService.importRemoteBookmarkAsMutable(branchName);
+        } else if (plan.checkoutMode === "trunk-continuation") {
+          yield* jjService.syncBookmarkToRemote(defaultBranch);
         } else if (plan.local !== undefined) {
           yield* jjService.trackRemoteBookmarkToLocal(branchName, plan.local.changeId);
         }
-        const workingCopyLog = yield* jjService.moveToBookmark(branchName);
+        const workingCopyLog =
+          plan.checkoutMode === "trunk-continuation"
+            ? yield* jjService.moveToTrunkContinuation(defaultBranch)
+            : yield* jjService.moveToBookmark(branchName);
         yield* Console.log(
           [`got ${branchName}`, "", "current jj state", workingCopyLog].join("\n"),
         );
@@ -436,7 +444,7 @@ const promptForGetConfirmation = (plan: ReturnType<typeof buildGetPlan>) =>
           message: plan.willOverwriteLocal
             ? `Overwrite local bookmark ${plan.branchName} with origin/${plan.branchName}?`
             : "Apply this get plan?",
-          default: true,
+          default: !plan.willOverwriteLocal,
         },
         {
           clearPromptOnDone: true,
