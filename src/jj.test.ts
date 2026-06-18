@@ -80,6 +80,92 @@ describe("JjService.getPullRequestUseTemplate", () => {
   });
 });
 
+describe("JjService.getTelemetryEnabled", () => {
+  it("defaults to false when no repo config is set", async () => {
+    const processLayer = makeProcessLayer((_command, args) => {
+      if (args.join(" ") === "config get jjacks.telemetry.enabled") {
+        return { stdout: "", stderr: "", exitCode: 1 };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    const enabled = await Effect.runPromise(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        return yield* jjService.getTelemetryEnabled;
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive))),
+    );
+
+    expect(enabled).toBe(false);
+  });
+
+  it("reads true from repo config", async () => {
+    const processLayer = makeProcessLayer((_command, args) => {
+      if (args.join(" ") === "config get jjacks.telemetry.enabled") {
+        return { stdout: "true", stderr: "", exitCode: 0 };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    const enabled = await Effect.runPromise(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        return yield* jjService.getTelemetryEnabled;
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive))),
+    );
+
+    expect(enabled).toBe(true);
+  });
+
+  it("reads false from repo config", async () => {
+    const processLayer = makeProcessLayer((_command, args) => {
+      if (args.join(" ") === "config get jjacks.telemetry.enabled") {
+        return { stdout: "false", stderr: "", exitCode: 0 };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    const enabled = await Effect.runPromise(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        return yield* jjService.getTelemetryEnabled;
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive))),
+    );
+
+    expect(enabled).toBe(false);
+  });
+
+  it("rejects unsupported config values", async () => {
+    const processLayer = makeProcessLayer((_command, args) => {
+      if (args.join(" ") === "config get jjacks.telemetry.enabled") {
+        return { stdout: "yes", stderr: "", exitCode: 0 };
+      }
+
+      throw new Error(`Unexpected command: jj ${args.join(" ")}`);
+    });
+
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const jjService = yield* JjService;
+        return yield* jjService.getTelemetryEnabled;
+      }).pipe(Effect.provide(Layer.mergeAll(processLayer, JjServiceLive))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value.message).toContain("jjacks.telemetry.enabled");
+        expect(failure.value.message).toContain("true, false");
+      }
+    }
+  });
+});
+
 describe("JjService.editWorkingCopyOnStack", () => {
   it("rebases the effective root and edits the current bookmark for amend-style work", async () => {
     const calls: Array<ReadonlyArray<string>> = [];

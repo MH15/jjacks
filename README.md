@@ -117,7 +117,13 @@ jjacks get feat/coworker-branch --dry-run
 
 ## Local Telemetry
 
-`jjacks` records local command timing telemetry to `.jjacks/telemetry/commands.jsonl` inside the repo. The directory is gitignored and is intended for local performance analysis.
+`jjacks` can record local command timing telemetry to `.jjacks/telemetry/commands.jsonl` inside the repo. Telemetry is disabled by default. To enable it for a repo:
+
+```bash
+jj config set --repo jjacks.telemetry.enabled true
+```
+
+The telemetry directory is gitignored and is intended for local performance analysis.
 
 Generate a static HTML report from the collected data:
 
