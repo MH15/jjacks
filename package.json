@@ -1,6 +1,6 @@
 {
   "name": "jjacks",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "description": "Sync a jj bookmark stack with GitHub pull requests.",
   "homepage": "https://github.com/MH15/jjacks#readme",
   "bugs": {

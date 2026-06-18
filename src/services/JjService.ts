@@ -21,6 +21,7 @@ export class JjService extends Context.Tag("JjService")<
       ProcessService
     >;
     readonly getPullRequestUseTemplate: Effect.Effect<boolean, CliError, ProcessService>;
+    readonly getTelemetryEnabled: Effect.Effect<boolean, CliError, ProcessService>;
     readonly getCurrentStack: Effect.Effect<
       ReadonlyArray<StackEntryType>,
       CliError,
@@ -162,6 +163,31 @@ const getPullRequestUseTemplate = Effect.gen(function* () {
   return yield* Effect.fail(
     new CliError(
       `Unsupported value for jjacks.pull_requests.use_template: ${value}\nExpected one of: true, false`,
+    ),
+  );
+});
+
+const getTelemetryEnabled = Effect.gen(function* () {
+  const process = yield* ProcessService;
+  const result = yield* process.run("jj", ["config", "get", "jjacks.telemetry.enabled"], {
+    allowNonZeroExit: true,
+  });
+
+  if (result.exitCode !== 0 || result.stdout.trim().length === 0) {
+    return false;
+  }
+
+  const value = result.stdout.trim();
+  if (value === "true") {
+    return true;
+  }
+  if (value === "false") {
+    return false;
+  }
+
+  return yield* Effect.fail(
+    new CliError(
+      `Unsupported value for jjacks.telemetry.enabled: ${value}\nExpected one of: true, false`,
     ),
   );
 });
@@ -650,6 +676,7 @@ const make = {
   ensureAdvanceBookmarksEnabled,
   getStackCommentLocation,
   getPullRequestUseTemplate,
+  getTelemetryEnabled,
   getTrackedBookmarks,
   getCurrentTree,
   getLocalBookmarkSnapshot: (bookmarkName: string) => getBookmarkSnapshot(bookmarkName),

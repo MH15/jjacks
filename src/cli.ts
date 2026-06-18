@@ -45,8 +45,14 @@ const sharedLayer = Layer.mergeAll(
 const runTelemetryCommand = <A, E, R>(
   command: string,
   effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E, R | TelemetryService> =>
+): Effect.Effect<A, E | CliError, R | TelemetryService | JjService | ProcessService> =>
   Effect.gen(function* () {
+    const jjService = yield* JjService;
+    const telemetryEnabled = yield* jjService.getTelemetryEnabled;
+    if (!telemetryEnabled) {
+      return yield* effect;
+    }
+
     const telemetry = yield* TelemetryService;
     return yield* telemetry.withCommand(
       {
