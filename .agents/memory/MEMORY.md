@@ -1,0 +1,1 @@
+- [jjacks project](jjacks-setup.md) — CLI tool (not a web app); Node 22 required, build via tsup, no workflow/port/deployment.
