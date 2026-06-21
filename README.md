@@ -144,3 +144,5 @@ It is a static file with no build step; the browser loads Chart.js from `esm.sh`
 - The supported workflow is one `jj` bookmark per GitHub pull request.
 - `sync --execute` is intentionally direct: if a network or GitHub step fails, rerun `jjacks status` and `jjacks sync` after fixing the underlying issue.
 - Broader multi-stack management and unusual `jj` topologies are still beta territory.
+
+edited from replit
